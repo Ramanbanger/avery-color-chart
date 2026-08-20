@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Avery Dennison SC950 - Complete Color Chart</title>
+  
+  <!-- Tailwind CSS & Lucide Icons -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    
+    body { 
+      font-family: 'Inter', sans-serif; 
+      background-color: #f8fafc; /* Very light background outside the book */
+    }
+
+    /* Custom Scrollbar */
+    .book-scroll::-webkit-scrollbar { width: 6px; }
+    .book-scroll::-webkit-scrollbar-track { background: transparent; }
+    .book-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+    .book-scroll::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+    /* Book Page Shadow */
+    .page-shadow {
+      box-shadow: 
+        0 4px 6px -1px rgba(0, 0, 0, 0.05), 
+        0 2px 4px -1px rgba(0, 0, 0, 0.03),
+        -5px 0 15px -5px rgba(0,0,0,0.05);
+    }
+
+    /* Swatch specific styles */
+    .swatch-clear {
+      background-image: repeating-conic-gradient(#e2e8f0 0% 25%, #ffffff 0% 50%);
+      background-size: 12px 12px;
+      border: 1px solid #e2e8f0;
+    }
+    .swatch-metallic::after {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: linear-gradient(135deg, rgba(255,255,255,0.4) 0%, rgba(255,255,255,0) 40%, rgba(0,0,0,0.1) 100%);
+      pointer-events: none;
+    }
+    
+    /* Comparison pane specific */
+    .compare-slot-empty {
+      background: repeating-linear-gradient(45deg, #f1f5f9, #f1f5f9 10px, #ffffff 10px, #ffffff 20px);
+    }
+  </style>
+</head>
+<body class="h-screen w-full flex flex-col overflow-hidden text-slate-800">
+
+  <!-- Header -->
+  <header class="h-16 bg-white border-b border-slate-200 px-6 flex items-center justify-between shrink-0 z-20 shadow-sm relative">
+    <div class="flex items-center gap-4">
+      <div class="w-8 h-8 rounded bg-red-600 flex items-center justify-center font-black text-white text-lg shadow-sm">A</div>
+      <div>
+        <h1 class="text-lg font-bold tracking-tight text-slate-900 flex items-center gap-2">
+          Avery Dennison® SC 950 Cut Vinyl Film
+        </h1>
+        <p class="text-xs text-slate-500 font-medium">Digital Swatch Book (Matches PDF Data)</p>
+      </div>
+    </div>
+    
+    <div class="hidden md:flex items-center gap-2 text-sm text-slate-500">
+      <span>Select up to 3 colors to compare side-by-side</span>
+      <i data-lucide="arrow-right" class="w-4 h-4"></i>
+    </div>
+  </header>
+
+  <main class="flex-1 w-full flex flex-col lg:flex-row overflow-hidden">
+    
+    <!-- LEFT SIDE: DIGITAL SWATCH BOOK -->
+    <div class="flex-1 h-full flex flex-col md:flex-row bg-slate-50 z-10 relative page-shadow">
+      
+      <!-- Book Index (Sidebar) -->
+      <aside class="w-full md:w-56 bg-white border-r border-slate-200 flex flex-col shrink-0 h-auto md:h-full z-10">
+        <div class="p-4 border-b border-slate-200">
+          <div class="relative w-full">
+            <i data-lucide="search" class="w-4 h-4 absolute left-3 top-2.5 text-slate-400"></i>
+            <input type="text" id="searchInput" placeholder="Search colors..."
+                   class="w-full bg-slate-50 border border-slate-200 rounded-md pl-9 pr-3 py-2 text-sm focus:outline-none focus:border-red-500 focus:bg-white transition-all text-slate-700"
+                   oninput="handleSearch()">
+          </div>
+        </div>
+
+        <div class="px-4 pt-4 pb-2">
+          <h2 class="text-[10px] font-bold uppercase tracking-widest text-slate-400">Color Families</h2>
+        </div>
+        
+        <nav class="flex-1 px-2 pb-4 overflow-y-auto book-scroll flex flex-col gap-0.5" id="categoryTabs">
+          <!-- Tabs inserted dynamically -->
+        </nav>
+      </aside>
+
+      <!-- Book Page (Grid) -->
+      <div class="flex-1 bg-white h-full flex flex-col relative">
+        <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-white/95 backdrop-blur z-10">
+          <div>
+            <h2 id="pageTitle" class="text-xl font-bold text-slate-900">Whites & Clears</h2>
+            <p id="pageSubtitle" class="text-xs text-slate-500 mt-0.5">Opaque Films</p>
+          </div>
+        </div>
+        
+        <div class="flex-1 overflow-y-auto p-6 book-scroll bg-white" id="swatchGrid">
+          <!-- Swatches inserted dynamically -->
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT SIDE: COMPARISON BOARD -->
+    <aside class="w-full lg:w-[450px] xl:w-[550px] bg-slate-100 border-l border-slate-200 flex flex-col shrink-0 h-1/3 lg:h-full shadow-inner z-0">
+      <div class="p-4 border-b border-slate-200 bg-white flex items-center justify-between">
+        <h2 class="text-sm font-bold uppercase tracking-widest text-slate-700 flex items-center gap-2">
+          <i data-lucide="layout-panel-left" class="w-4 h-4 text-slate-400"></i>
+          Comparison Board
+        </h2>
+        <button onclick="clearComparison()" class="text-xs text-red-600 hover:text-red-700 font-medium">Clear All</button>
+      </div>
+      
+      <div class="flex-1 p-4 flex gap-3 overflow-x-auto lg:overflow-hidden" id="comparisonSlots">
+        <!-- 3 Slots inserted dynamically -->
+      </div>
+    </aside>
+
+  </main>
+
+  <script>
+    // COMPREHENSIVE DATASET DIRECTLY TRANSCRIBED FROM PDF PAGES 3 & 4
+    // Hex values are visually color-matched accurately to the PDF swatches.
+    const colorDatabase = {
+      "Whites, Clears & Blacks": [
+        { code: '119', name: 'Clear', hex: '#e2e8f0', type: 'Opaque', isClear: true },
+        { code: '104', name: 'Matte Clear', hex: '#f1f5f9', type: 'Opaque', isClear: true },
+        { code: '101', name: 'White', hex: '#ffffff', type: 'Opaque' },
+        { code: '102', name: 'Matte White', hex: '#fcfcfc', type: 'Opaque' },
+        { code: '105', name: 'True White', hex: '#f8f8f8', type: 'Opaque' },
+        { code: '108', name: 'Cover White', hex: '#f0f0f0', type: 'Opaque' },
+        { code: '180', name: 'Matte Black', hex: '#2a2a2a', type: 'Opaque' },
+        { code: '190', name: 'Gloss Black', hex: '#111111', type: 'Opaque' }
+      ],
+      "Yellows & Oranges": [
+        { code: '235', name: 'Yellow', hex: '#ffc600', type: 'Opaque' },
+        { code: '240', name: 'Sunflower Yellow', hex: '#ffb100', type: 'Opaque' },
+        { code: '250', name: 'Dark Yellow', hex: '#f09f00', type: 'Opaque' },
+        { code: '253', name: 'Imitation Gold', hex: '#e29d00', type: 'Opaque' },
+        { code: '355', name: 'Apricot', hex: '#f37021', type: 'Opaque' },
+        { code: '360', name: 'Orange', hex: '#ee4a08', type: 'Opaque' },
+        { code: '362', name: 'Construction Orange', hex: '#f45000', type: 'Opaque' },
+        { code: '206', name: 'Bright Yellow', hex: '#ffdb00', type: 'Opaque' },
+        { code: '210', name: 'Primrose Yellow', hex: '#f5e350', type: 'Opaque' },
+        { code: '220', name: 'Canary Yellow', hex: '#fed925', type: 'Opaque' },
+        { code: '225', name: 'Rubber Duckie', hex: '#facd00', type: 'Opaque' },
+        { code: '230', name: 'Medium Yellow', hex: '#fdc000', type: 'Opaque' },
+        { code: '380', name: 'Bright Orange', hex: '#ff5300', type: 'Opaque' },
+        { code: '315', name: 'Tangerine', hex: '#f46b00', type: 'Opaque' }
+      ],
+      "Reds, Pinks & Purples": [
+        { code: '440', name: 'Red', hex: '#c11221', type: 'Opaque' },
+        { code: '445', name: 'Fire Red', hex: '#d71921', type: 'Opaque' },
+        { code: '430', name: 'Cardinal Red', hex: '#981b2a', type: 'Opaque' },
+        { code: '450', name: 'Dark Red', hex: '#6d1118', type: 'Opaque' },
+        { code: '460', name: 'Spectra Red', hex: '#db1f26', type: 'Opaque' },
+        { code: '470', name: 'Burgundy', hex: '#5a1a27', type: 'Opaque' },
+        { code: '480', name: 'Burgundy Maroon', hex: '#4d1620', type: 'Opaque' },
+        { code: '519', name: 'Blush', hex: '#d46d90', type: 'Opaque' },
+        { code: '405', name: 'Hibiscus Red', hex: '#cd1f41', type: 'Opaque' },
+        { code: '417', name: 'Real Red', hex: '#b91626', type: 'Opaque' },
+        { code: '418', name: 'Luminous Red', hex: '#ea292c', type: 'Opaque' },
+        { code: '425', name: 'Tomato Red', hex: '#c82424', type: 'Opaque' },
+        { code: '513', name: 'Violet', hex: '#361d53', type: 'Opaque' },
+        { code: '565', name: 'Purple', hex: '#4a2060', type: 'Opaque' },
+        { code: '530', name: 'Magenta', hex: '#b01b67', type: 'Opaque' },
+        { code: '515', name: 'Blossom', hex: '#c54d7e', type: 'Opaque' },
+        { code: '508', name: 'Soft Pink', hex: '#e799b6', type: 'Opaque' },
+        { code: '575', name: 'Lavender', hex: '#8c7cae', type: 'Opaque' },
+        { code: '570', name: 'Berry', hex: '#551532', type: 'Opaque' }
+      ],
+      "Blues": [
+        { code: '670', name: 'Dark Blue', hex: '#121d3e', type: 'Opaque' },
+        { code: '665', name: 'Light Navy', hex: '#19264c', type: 'Opaque' },
+        { code: '678', name: 'Impulse Blue', hex: '#14275d', type: 'Opaque' },
+        { code: '687', name: 'Ocean Blue', hex: '#00619a', type: 'Opaque' },
+        { code: '680', name: 'Sapphire Blue', hex: '#004685', type: 'Opaque' },
+        { code: '655', name: 'Medium Blue', hex: '#005a96', type: 'Opaque' },
+        { code: '683', name: 'Royal Blue', hex: '#00376d', type: 'Opaque' },
+        { code: '630', name: 'Olympic Blue', hex: '#007bc0', type: 'Opaque' },
+        { code: '679', name: 'Reflex Blue', hex: '#171c59', type: 'Opaque' },
+        { code: '628', name: 'Egyptian Blue', hex: '#00447c', type: 'Opaque' },
+        { code: '682', name: 'Impact Blue', hex: '#004182', type: 'Opaque' },
+        { code: '642', name: 'Cascade Blue', hex: '#245a8f', type: 'Opaque' },
+        { code: '659', name: 'Byzantine Blue', hex: '#183f7a', type: 'Opaque' },
+        { code: '640', name: 'Light Blue', hex: '#5c93b4', type: 'Opaque' },
+        { code: '626', name: 'French Blue', hex: '#4379a6', type: 'Opaque' },
+        { code: '650', name: 'Powder Blue', hex: '#719ec2', type: 'Opaque' },
+        { code: '652', name: 'Butterfly Blue', hex: '#477ebd', type: 'Opaque' },
+        { code: '645', name: 'Peacock Blue', hex: '#007096', type: 'Opaque' },
+        { code: '620', name: 'Shade Blue', hex: '#294460', type: 'Opaque' },
+        { code: '635', name: 'Nautical Blue', hex: '#132641', type: 'Opaque' },
+        { code: '625', name: 'Majestic Blue', hex: '#131c38', type: 'Opaque' },
+        { code: '675', name: 'Interstate Blue', hex: '#10254c', type: 'Opaque' },
+        { code: '695', name: 'Vivid Blue', hex: '#00599c', type: 'Opaque' },
+        { code: '690', name: 'Intense Blue', hex: '#0f1e40', type: 'Opaque' }
+      ],
+      "Greens & Teals": [
+        { code: '730', name: 'Dark Teal', hex: '#004652', type: 'Opaque' },
+        { code: '720', name: 'Teal', hex: '#006270', type: 'Opaque' },
+        { code: '715', name: 'Real Teal', hex: '#006e82', type: 'Opaque' },
+        { code: '705', name: 'Dark Aqua', hex: '#007a87', type: 'Opaque' },
+        { code: '770', name: 'Kelly Green', hex: '#00754a', type: 'Opaque' },
+        { code: '726', name: 'Parakeet Green', hex: '#14b130', type: 'Opaque' },
+        { code: '780', name: 'Yellow Green', hex: '#00a651', type: 'Opaque' },
+        { code: '760', name: 'Apple Green', hex: '#008f37', type: 'Opaque' },
+        { code: '734', name: 'Citrus Green', hex: '#5bb529', type: 'Opaque' },
+        { code: '772', name: 'Grow Green', hex: '#007a33', type: 'Opaque' },
+        { code: '775', name: 'Bright Green', hex: '#007236', type: 'Opaque' },
+        { code: '778', name: 'Green', hex: '#005b45', type: 'Opaque' },
+        { code: '785', name: 'Forest Green', hex: '#0b482a', type: 'Opaque' },
+        { code: '790', name: 'Deep Green', hex: '#043121', type: 'Opaque' },
+        { code: '793', name: 'Dark Green', hex: '#0d2015', type: 'Opaque' },
+        { code: '765', name: 'Olive Green', hex: '#576717', type: 'Opaque' }
+      ],
+      "Browns, Grays & Neutrals": [
+        { code: '920', name: 'Beige', hex: '#d1c7b3', type: 'Opaque' },
+        { code: '910', name: 'Almond', hex: '#e0d6c8', type: 'Opaque' },
+        { code: '921', name: 'Dark Beige', hex: '#c1aa8c', type: 'Opaque' },
+        { code: '965', name: 'Sandstone', hex: '#a88d75', type: 'Opaque' },
+        { code: '970', name: 'Buckskin', hex: '#a4773c', type: 'Opaque' },
+        { code: '215', name: 'Gold', hex: '#b2883f', type: 'Opaque' },
+        { code: '978', name: 'Cocoa', hex: '#482b21', type: 'Opaque' },
+        { code: '990', name: 'Chocolate Brown', hex: '#38241c', type: 'Opaque' },
+        { code: '983', name: 'Dark Brown', hex: '#35221b', type: 'Opaque' },
+        { code: '960', name: 'Terracotta', hex: '#a03d15', type: 'Opaque' },
+        { code: '810', name: 'Light Gray', hex: '#c4c6c8', type: 'Opaque' },
+        { code: '820', name: 'Palm Oyster', hex: '#b3b5b8', type: 'Opaque' },
+        { code: '825', name: 'Light Ash Gray', hex: '#a1a3a6', type: 'Opaque' },
+        { code: '830', name: 'Slate Gray', hex: '#898e94', type: 'Opaque' },
+        { code: '835', name: 'Medium Gray', hex: '#75787b', type: 'Opaque' },
+        { code: '804', name: 'Pewter', hex: '#62686f', type: 'Opaque' },
+        { code: '817', name: 'Silver', hex: '#7d8287', type: 'Opaque' },
+        { code: '855', name: 'Dark Gray', hex: '#464e56', type: 'Opaque' },
+        { code: '870', name: 'Battleship Gray', hex: '#333a41', type: 'Opaque' }
+      ],
+      "Metallic Films": [
+        { code: '160', name: 'White Sparkle Metallic', hex: '#e5e6e8', type: 'Metallic' },
+        { code: '109', name: 'White Pearlescent Metallic', hex: '#dfdfd9', type: 'Metallic' },
+        { code: '192', name: 'Black Metallic', hex: '#171719', type: 'Metallic' },
+        { code: '869', name: 'Light Silver', hex: '#9e9ea0', type: 'Metallic' },
+        { code: '801', name: 'Silver Metallic', hex: '#949599', type: 'Metallic' },
+        { code: '815', name: 'Pewter Metallic', hex: '#686a6c', type: 'Metallic' },
+        { code: '806', name: 'Gunmetal Metallic', hex: '#424446', type: 'Metallic' },
+        { code: '805', name: 'Charcoal Metallic', hex: '#3a3c3f', type: 'Metallic' },
+        { code: '808', name: 'Medium Charcoal Metallic', hex: '#2c2d31', type: 'Metallic' },
+        { code: '809', name: 'Dark Charcoal Metallic', hex: '#212226', type: 'Metallic' },
+        { code: '207', name: 'Champagne Mist Metallic', hex: '#b0a498', type: 'Metallic' },
+        { code: '923', name: 'Light Briar Brown Metallic', hex: '#6f5c53', type: 'Metallic' },
+        { code: '930', name: 'Bronze Metallic', hex: '#764d26', type: 'Metallic' },
+        { code: '217', name: 'Light Gold Metallic', hex: '#a38a58', type: 'Metallic' },
+        { code: '213', name: 'Bright Gold Metallic', hex: '#bc9643', type: 'Metallic' },
+        { code: '441', name: 'Red Metallic', hex: '#811e25', type: 'Metallic' },
+        { code: '455', name: 'Autumn Maple Metallic', hex: '#512220', type: 'Metallic' },
+        { code: '779', name: 'Hunter Green Metallic', hex: '#0f2e27', type: 'Metallic' },
+        { code: '641', name: 'Mist Blue Metallic', hex: '#4f7895', type: 'Metallic' },
+        { code: '646', name: 'Bright Blue Metallic', hex: '#004886', type: 'Metallic' },
+        { code: '647', name: 'Electric Blue Metallic', hex: '#173072', type: 'Metallic' },
+        { code: '683M', name: 'Royal Blue Metallic', hex: '#18225e', type: 'Metallic' },
+        { code: '653', name: 'Dark Royal Blue Metallic', hex: '#14193d', type: 'Metallic' },
+        { code: '651', name: 'Grand Blue Metallic', hex: '#0c133a', type: 'Metallic' },
+        { code: '688', name: 'Ultra Blue Metallic', hex: '#0f2b74', type: 'Metallic' },
+        { code: '877', name: 'Ultra Silver Metallic', hex: '#a9b0b4', type: 'Metallic' },
+        { code: '219', name: 'Ultra Gold Metallic', hex: '#99773f', type: 'Metallic' },
+        { code: '211', name: 'Rose Gold Metallic', hex: '#b8756c', type: 'Metallic' },
+        { code: '585', name: 'Ultra Rose Quartz Metallic', hex: '#88254c', type: 'Metallic' },
+        { code: '195', name: 'Ultra Black Metallic', hex: '#141618', type: 'Metallic' },
+        { code: '481', name: 'Ultra Red Metallic', hex: '#81141c', type: 'Metallic' }
+      ]
+    };
+
+    let activeCategory = "Whites, Clears & Blacks";
+    let comparedColors = []; // Max 3 colors
+
+    function init() {
+      lucide.createIcons();
+      renderTabs();
+      renderPage(activeCategory);
+      renderComparisonSlots();
+    }
+
+    function renderTabs() {
+      const nav = document.getElementById('categoryTabs');
+      nav.innerHTML = '';
+      
+      Object.keys(colorDatabase).forEach(cat => {
+        const btn = document.createElement('button');
+        const isActive = activeCategory === cat;
+        
+        btn.onclick = () => {
+          document.getElementById('searchInput').value = '';
+          activeCategory = cat;
+          renderTabs();
+          renderPage(cat);
+        };
+        
+        btn.className = `w-full text-left px-3 py-2.5 rounded-md text-sm font-medium transition-all flex items-center justify-between
+          ${isActive 
+            ? 'bg-red-50 text-red-700' 
+            : 'bg-transparent text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`;
+            
+        btn.innerHTML = `
+          <span>${cat}</span>
+          ${isActive ? `<div class="w-1.5 h-1.5 rounded-full bg-red-600"></div>` : ''}
+        `;
+        
+        nav.appendChild(btn);
+      });
+    }
+
+    function renderPage(category, filterText = '') {
+      const grid = document.getElementById('swatchGrid');
+      const title = document.getElementById('pageTitle');
+      const subtitle = document.getElementById('pageSubtitle');
+      
+      grid.innerHTML = '';
+      let swatchesToRender = [];
+      
+      if (filterText) {
+        title.textContent = "Search Results";
+        subtitle.textContent = `Matching "${filterText}" across all pages`;
+        Object.values(colorDatabase).forEach(arr => {
+          const matched = arr.filter(c => 
+            c.name.toLowerCase().includes(filterText.toLowerCase()) || 
+            c.code.toLowerCase().includes(filterText.toLowerCase())
+          );
+          swatchesToRender.push(...matched);
+        });
+      } else {
+        title.textContent = category;
+        swatchesToRender = colorDatabase[category] || [];
+        subtitle.textContent = category === "Metallic Films" ? "Metallic Finish" : "Opaque Finish";
+      }
+
+      if (swatchesToRender.length === 0) {
+        grid.innerHTML = `<div class="col-span-full py-12 text-center text-slate-400 text-sm">No colors found.</div>`;
+        return;
+      }
+
+      const gridContainer = document.createElement('div');
+      gridContainer.className = "grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3";
+      
+      swatchesToRender.forEach(color => {
+        const chip = document.createElement('div');
+        
+        // Determine if color is already in comparison tray
+        const isCompared = comparedColors.some(c => c.code === color.code);
+        
+        chip.onclick = () => toggleComparison(color);
+        chip.className = `group flex flex-col cursor-pointer transition-all duration-200 
+          ${isCompared ? 'opacity-50 ring-2 ring-red-500 rounded-md ring-offset-1' : 'hover:-translate-y-0.5'}`;
+        
+        const isWhite = color.hex === '#ffffff' || color.hex === '#fcfcfc' || color.hex === '#f8f8f8';
+        
+        // Color block HTML mapping to PDF style
+        chip.innerHTML = `
+          <div class="w-full aspect-[4/3] rounded-sm relative mb-1.5 shadow-sm
+            ${color.isClear ? 'swatch-clear' : ''} 
+            ${color.type === 'Metallic' ? 'swatch-metallic' : ''}"
+            style="background-color: ${color.isClear ? 'transparent' : color.hex}; 
+                   ${isWhite ? 'border: 1px solid #e2e8f0;' : ''}">
+          </div>
+          <div class="px-0.5">
+            <div class="text-xs font-bold text-slate-800 leading-tight group-hover:text-red-600 transition-colors truncate" title="${color.name}">${color.name}</div>
+            <div class="text-[10px] text-slate-500 font-medium">#${color.code}</div>
+          </div>
+        `;
+        
+        gridContainer.appendChild(chip);
+      });
+      
+      grid.appendChild(gridContainer);
+    }
+
+    function handleSearch() {
+      const val = document.getElementById('searchInput').value;
+      if (val.trim() === '') {
+        renderTabs();
+        renderPage(activeCategory);
+      } else {
+        renderPage(null, val);
+      }
+    }
+
+    function toggleComparison(color) {
+      const index = comparedColors.findIndex(c => c.code === color.code);
+      if (index > -1) {
+        // Remove if already exists
+        comparedColors.splice(index, 1);
+      } else {
+        // Add if space available (Max 3)
+        if (comparedColors.length < 3) {
+          comparedColors.push(color);
+        } else {
+          // Replace last one if full
+          comparedColors[2] = color;
+        }
+      }
+      // Re-render both views to update selection states
+      renderComparisonSlots();
+      renderPage(activeCategory, document.getElementById('searchInput').value);
+    }
+
+    function removeComparison(code) {
+      comparedColors = comparedColors.filter(c => c.code !== code);
+      renderComparisonSlots();
+      renderPage(activeCategory, document.getElementById('searchInput').value);
+    }
+
+    function clearComparison() {
+      comparedColors = [];
+      renderComparisonSlots();
+      renderPage(activeCategory, document.getElementById('searchInput').value);
+    }
+
+    function renderComparisonSlots() {
+      const container = document.getElementById('comparisonSlots');
+      container.innerHTML = '';
+
+      for (let i = 0; i < 3; i++) {
+        const color = comparedColors[i];
+        const slot = document.createElement('div');
+        slot.className = "flex-1 min-w-[120px] rounded-lg border border-slate-200 overflow-hidden flex flex-col bg-white shadow-sm";
+        
+        if (color) {
+           const isWhite = color.hex === '#ffffff' || color.hex === '#fcfcfc' || color.hex === '#f8f8f8';
+           slot.innerHTML = `
+            <div class="flex-1 w-full relative 
+              ${color.isClear ? 'swatch-clear' : ''} 
+              ${color.type === 'Metallic' ? 'swatch-metallic' : ''}"
+              style="background-color: ${color.isClear ? 'transparent' : color.hex};
+                     ${isWhite ? 'border-bottom: 1px solid #e2e8f0;' : ''}">
+              <button onclick="removeComparison('${color.code}')" class="absolute top-2 right-2 w-6 h-6 bg-black/20 hover:bg-black/40 backdrop-blur rounded-full flex items-center justify-center text-white transition-colors">
+                <i data-lucide="x" class="w-3 h-3"></i>
+              </button>
+            </div>
+            <div class="p-3 bg-white border-t border-slate-100 flex flex-col justify-between h-[80px]">
+              <div>
+                <p class="text-sm font-bold text-slate-900 leading-tight">${color.name}</p>
+                <p class="text-xs text-slate-500 mt-0.5">SC950-${color.code}</p>
+              </div>
+              <p class="text-[10px] font-semibold text-slate-400 uppercase">${color.type}</p>
+            </div>
+          `;
+        } else {
+          slot.innerHTML = `
+            <div class="flex-1 w-full compare-slot-empty flex flex-col items-center justify-center text-slate-400">
+              <i data-lucide="plus-circle" class="w-6 h-6 mb-2 opacity-50"></i>
+              <span class="text-xs font-medium px-4 text-center">Select color<br>from book</span>
+            </div>
+          `;
+        }
+        
+        container.appendChild(slot);
+      }
+      lucide.createIcons();
+    }
+
+    // Initialize on load
+    window.onload = init;
+  </script>
+</body>
+</html>
