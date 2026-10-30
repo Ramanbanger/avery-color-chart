@@ -1,0 +1,777 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Run Sorter</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+body { margin: 0; }
+/* Layout: enterprise ERP shell — dark app bar, command bar, page header with summary tiles,
+   then a two-pane workspace: source pages (left) and the sequenced runs grid (right); stacks on phones */
+:root {
+  --shell: #002050; --shell-ink: #ffffff; --shell-muted: #b7c6dd;
+  --bg: #f3f2f1; --panel: #ffffff; --ink: #201f1e; --muted: #605e5c; --line: #edebe9; --line-strong: #c8c6c4;
+  --accent: #0f6cbd; --accent-hover: #115ea3; --accent-ink: #ffffff; --accent-soft: #ebf3fc; --row-hover: #f5f5f5;
+  --ok: #107c10; --ok-soft: #dff6dd; --bad: #a4262c; --bad-soft: #fde7e9; --warn: #8a5a00; --warn-soft: #fff4ce;
+  --font: "Segoe UI", "Segoe UI Web (West European)", -apple-system, BlinkMacSystemFont, Roboto, "Helvetica Neue", sans-serif;
+  --mono: "Cascadia Mono", Consolas, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --shell: #0b1a33; --shell-ink: #ffffff; --shell-muted: #9fb0c9;
+  --bg: #1b1a19; --panel: #252423; --ink: #f3f2f1; --muted: #c8c6c4; --line: #3b3a39; --line-strong: #605e5c;
+  --accent: #479ef5; --accent-hover: #62abf5; --accent-ink: #0a0a0a; --accent-soft: #10283f; --row-hover: #2d2c2b;
+  --ok: #54b054; --ok-soft: #173317; --bad: #f1707b; --bad-soft: #3f1b1e; --warn: #f2c661; --warn-soft: #3b3014; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --shell: #0b1a33; --shell-ink: #ffffff; --shell-muted: #9fb0c9;
+  --bg: #1b1a19; --panel: #252423; --ink: #f3f2f1; --muted: #c8c6c4; --line: #3b3a39; --line-strong: #605e5c;
+  --accent: #479ef5; --accent-hover: #62abf5; --accent-ink: #0a0a0a; --accent-soft: #10283f; --row-hover: #2d2c2b;
+  --ok: #54b054; --ok-soft: #173317; --bad: #f1707b; --bad-soft: #3f1b1e; --warn: #f2c661; --warn-soft: #3b3014; color-scheme: dark }
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { background: var(--bg); color: var(--ink); font: 14px/20px var(--font); }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--shell); }
+.gutter { padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+
+/* App bar */
+.appbar { background: var(--shell); color: var(--shell-ink); height: 48px; display: flex; align-items: center; gap: 14px; position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; }
+.appbar .grid-ico svg { width: 18px; height: 18px; }
+.appbar .name { font-weight: 600; font-size: 15px; white-space: nowrap; }
+.appbar .sep { width: 1px; height: 20px; background: rgba(255,255,255,.25); }
+.appbar .area { color: var(--shell-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.appbar .site { margin-left: auto; font-size: 12px; color: var(--shell-muted); white-space: nowrap; }
+@media (max-width: 560px) { .appbar .site, .appbar .sep, .appbar .area { display: none; } }
+
+/* Command bar */
+.cmdbar { background: var(--panel); border-bottom: 1px solid var(--line-strong); display: flex; flex-wrap: wrap; align-items: center; gap: 2px; padding-block: 4px; min-height: 44px; }
+.cmd { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 10px; border: 0; border-radius: 4px; background: transparent; color: var(--ink); font: 14px var(--font); cursor: pointer; }
+.cmd svg { color: var(--accent); }
+.cmd:hover:not(:disabled) { background: var(--row-hover); }
+.cmd:disabled { color: var(--muted); opacity: .6; cursor: default; }
+.cmd:disabled svg { color: var(--muted); }
+.cmd.primary { background: var(--accent); color: var(--accent-ink); padding: 0 14px; margin-right: 6px; }
+.cmd.primary svg { color: var(--accent-ink); }
+.cmd.primary:hover:not(:disabled) { background: var(--accent-hover); }
+.cmdsep { width: 1px; height: 24px; background: var(--line-strong); margin: 0 6px; }
+.cmd-right { margin-left: auto; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.field-inline { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; }
+select { font: 14px var(--font); color: var(--ink); background: var(--panel); border: 1px solid var(--line-strong); border-bottom-color: var(--muted); border-radius: 4px; height: 32px; padding: 0 8px; }
+:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
+
+/* Page header */
+.pagehead { padding-block: 16px 4px; display: flex; flex-direction: column; gap: 4px; }
+.crumbs { font-size: 12px; color: var(--muted); }
+.crumbs span { color: var(--accent); }
+.titlerow { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; }
+h1 { font-size: 24px; line-height: 32px; font-weight: 600; margin: 0; }
+.stamp { font-size: 12px; color: var(--muted); }
+.tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; padding-block: 12px; }
+.tile { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 10px 14px; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+.tile .k { font-size: 12px; color: var(--muted); }
+.tile .v { font-size: 26px; line-height: 34px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.tile .v small { font-size: 13px; font-weight: 400; color: var(--muted); margin-left: 4px; }
+.tile.alert .v { color: var(--bad); }
+@media (max-width: 640px) { .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* Workspace */
+.work { display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: 16px; align-items: start; padding-block: 4px 32px; }
+@media (max-width: 900px) { .work { grid-template-columns: minmax(0, 1fr); } }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; box-shadow: 0 1px 2px rgba(0,0,0,.08); min-width: 0; }
+.fasttab + .fasttab { border-top: 1px solid var(--line); }
+.fasttab > summary { list-style: none; display: flex; align-items: center; gap: 8px; padding: 12px 14px; cursor: pointer; font-weight: 600; }
+.fasttab > summary::-webkit-details-marker { display: none; }
+.fasttab > summary .chev { transition: transform .15s; color: var(--muted); }
+.fasttab[open] > summary .chev { transform: rotate(90deg); }
+.fasttab > summary .count { margin-left: auto; font-weight: 400; color: var(--muted); font-size: 12px; }
+.tabbody { padding: 0 14px 14px; display: flex; flex-direction: column; gap: 10px; }
+.drop { display: flex; align-items: center; gap: 10px; border: 1px dashed var(--line-strong); border-radius: 4px; padding: 12px; cursor: pointer; color: var(--muted); font-size: 13px; }
+.drop svg { color: var(--accent); width: 20px; height: 20px; }
+.drop.over { border-color: var(--accent); background: var(--accent-soft); }
+.drop b { color: var(--ink); font-weight: 600; }
+.pages { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.page { position: relative; margin: 0; }
+.page img { width: 100%; aspect-ratio: 3 / 4; object-fit: cover; border: 1px solid var(--line-strong); border-radius: 2px; display: block; }
+.page figcaption { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.page button { position: absolute; top: 3px; right: 3px; width: 26px; height: 26px; border-radius: 2px; border: 1px solid var(--line-strong); background: var(--panel); color: var(--ink); display: grid; place-items: center; cursor: pointer; padding: 0; }
+.page button:hover { color: var(--bad); }
+.page button svg { width: 12px; height: 12px; }
+label.lbl { font-size: 13px; font-weight: 600; }
+.textin { width: 100%; height: 34px; font: 14px var(--font); color: var(--ink); background: var(--panel); border: 1px solid var(--line-strong); border-bottom: 1px solid var(--muted); border-radius: 4px; padding: 0 10px; }
+.textin:focus { outline: none; border-bottom: 2px solid var(--accent); }
+textarea { width: 100%; min-height: 150px; resize: vertical; font: 13px/20px var(--mono); background: var(--panel); color: var(--ink); border: 1px solid var(--line-strong); border-bottom: 1px solid var(--muted); border-radius: 4px; padding: 8px 10px; }
+textarea:focus { outline: none; border-bottom: 2px solid var(--accent); }
+.help { font-size: 12px; color: var(--muted); margin: 0; }
+code { font-family: var(--mono); font-size: 12px; }
+
+/* Message bar */
+.msgbar { display: flex; gap: 10px; align-items: flex-start; padding: 8px 12px; border-radius: 4px; font-size: 13px; background: var(--accent-soft); color: var(--ink); }
+.msgbar svg { color: var(--accent); margin-top: 2px; }
+.msgbar.err { background: var(--bad-soft); } .msgbar.err svg { color: var(--bad); }
+.msgbar.busy svg { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .msgbar.busy svg { animation: none; } }
+
+/* Grid */
+.gridhead { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+.gridhead h2 { font-size: 16px; font-weight: 600; margin: 0; }
+.pdfbtn { margin-left: auto; }
+.gridhead .cmd.primary { margin-right: 0; }
+.tag { font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 10px; background: var(--warn-soft); color: var(--warn); }
+.gridwrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+thead th { text-align: left; font-size: 12px; font-weight: 600; color: var(--muted); padding: 8px 10px; border-bottom: 1px solid var(--line-strong); white-space: nowrap; background: var(--panel); }
+td { padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th.num, td.num { text-align: right; }
+tbody tr.run:hover { background: var(--row-hover); }
+tr.grp td { background: var(--bg); padding: 6px 10px; border-bottom: 1px solid var(--line-strong); }
+.grpline { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.grpline b { font-weight: 600; }
+.grpline .n { color: var(--muted); font-size: 12px; }
+.grpline .cmd { height: 28px; margin-left: auto; font-size: 13px; }
+.seq { width: 44px; color: var(--muted); }
+.rid { font-family: var(--mono); font-weight: 600; color: var(--accent); white-space: nowrap; }
+td.stores { font-family: var(--mono); font-size: 13px; }
+.stores .bad { color: var(--bad); }
+.status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; white-space: nowrap; }
+.status i { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); }
+.status.check i { background: var(--bad); }
+.status.check { color: var(--bad); }
+tr.flag { background: var(--bad-soft); }
+@media (max-width: 600px) { td, thead th { padding-inline: 8px; } .seq { width: 30px; } }
+.scrim { position: fixed; inset: 0; background: rgba(0,0,0,.4); display: grid; place-items: center; z-index: 20;
+  padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
+.dialog { background: var(--panel); color: var(--ink); border-radius: 8px; box-shadow: 0 8px 32px rgba(0,0,0,.3); width: min(420px, 100%); padding: 20px; display: flex; flex-direction: column; gap: 12px; }
+.dialog h3 { margin: 0; font-size: 20px; font-weight: 600; }
+.datelist { display: flex; flex-direction: column; gap: 6px; max-height: 50vh; overflow-y: auto; }
+.dateopt { display: flex; gap: 10px; align-items: center; padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: 4px; cursor: pointer; }
+.dateopt:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+.dateopt input { accent-color: var(--accent); width: 18px; height: 18px; }
+.dateopt span { display: flex; flex-direction: column; }
+.dateopt small { color: var(--muted); font-size: 12px; }
+.row-end { display: flex; justify-content: flex-end; gap: 8px; }
+.row-end .cmd.primary { margin-right: 0; }
+.empty { padding: 32px 14px; text-align: center; color: var(--muted); }
+.foot { padding: 8px 14px; font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+
+
+<header class="appbar gutter">
+  <span class="grid-ico" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M2 2h3v3H2zM6.5 2h3v3h-3zM11 2h3v3h-3zM2 6.5h3v3H2zM6.5 6.5h3v3h-3zM11 6.5h3v3h-3zM2 11h3v3H2zM6.5 11h3v3h-3zM11 11h3v3h-3z"/></svg></span>
+  <span class="name">Run Sorter</span><span class="sep"></span><span class="area">Outbound dispatch</span>
+  <span class="site">Site: Ottawa DC · 3220 Hawthorne Rd</span>
+</header>
+
+<nav class="cmdbar gutter" aria-label="Commands">
+  <label class="cmd" for="photo" id="addCmd"><svg viewBox="0 0 16 16"><path d="M2 4.5h2.5L5.8 3h4.4l1.3 1.5H14v8.5H2z"/><circle cx="8" cy="8.5" r="2.3"/></svg>Add pages</label>
+  <button class="cmd primary" id="readBtn" disabled><svg viewBox="0 0 16 16"><path d="M3 4h10M3 8h7M3 12h4M12 9.5v4M10 11.5l2 2 2-2"/></svg>Read &amp; sort</button>
+  <button class="cmd" id="stopBtn" hidden><svg viewBox="0 0 16 16"><rect x="4" y="4" width="8" height="8"/></svg>Stop</button>
+  <button class="cmd" id="clearBtn" disabled><svg viewBox="0 0 16 16"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5"/></svg>Remove pages</button>
+  <span class="cmdsep"></span>
+  <button class="cmd" data-email><svg viewBox="0 0 16 16"><rect x="2" y="3.5" width="12" height="9" rx="1"/><path d="M2.5 4.5 8 9l5.5-4.5"/></svg>Email</button>
+  <button class="cmd" data-xlsx><svg viewBox="0 0 16 16"><rect x="2" y="2.5" width="12" height="11" rx="1"/><path d="M2 6h12M2 9.5h12M6 2.5v11"/></svg>Excel schedule</button>
+  <button class="cmd" data-pdf><svg viewBox="0 0 16 16"><path d="M4 1.5h5.5L13 5v9.5H4z"/><path d="M9.5 1.5V5H13M6 9.5h5M6 12h3.5"/></svg>Download PDF</button>
+  <button class="cmd" id="copyAll"><svg viewBox="0 0 16 16"><rect x="5" y="5" width="8.5" height="8.5" rx="1"/><path d="M3 10.5V3.5a1 1 0 0 1 1-1h6.5"/></svg>Copy run IDs</button>
+  <div class="cmd-right">
+    <label class="field-inline">Sort by
+      <select id="sortBy"><option value="km">Distance from DC</option><option value="time">Transit time</option></select>
+    </label>
+    <label class="field-inline">Order
+      <select id="dir"><option value="far">Farthest first</option><option value="near">Nearest first</option></select>
+    </label>
+  </div>
+</nav>
+
+<main>
+  <section class="pagehead gutter">
+    <div class="crumbs">Outbound dispatch <span>›</span> Run sequencing</div>
+    <div class="titlerow"><h1>Run sequencing</h1><span class="stamp" id="stamp"></span></div>
+  </section>
+
+  <section class="tiles gutter" aria-label="Summary">
+    <div class="tile"><div class="k">Runs</div><div class="v" id="tRuns">0</div></div>
+    <div class="tile"><div class="k">Stops</div><div class="v" id="tStops">0</div></div>
+    <div class="tile"><div class="k">Delivery dates</div><div class="v" id="tDates">0</div></div>
+    <div class="tile" id="tCheckTile"><div class="k">Need checking</div><div class="v" id="tCheck">0</div></div>
+  </section>
+
+  <div class="work gutter">
+    <aside class="panel">
+      <details class="fasttab" open>
+        <summary><svg class="chev" viewBox="0 0 16 16"><path d="M6 3.5 10.5 8 6 12.5"/></svg>Run sheet pages<span class="count" id="pageCount">0 pages</span></summary>
+        <div class="tabbody">
+          <div class="pages" id="thumbs" hidden></div>
+          <label class="drop" id="drop" for="photo">
+            <svg viewBox="0 0 16 16"><path d="M8 11V3M5 6l3-3 3 3M2.5 10.5v3h11v-3"/></svg>
+            <span id="dropText"><b>Add pages</b><br>Take a photo or pick several, or pick the Planned Shipments .xlsx file.</span>
+          </label>
+          <input type="file" id="photo" accept="image/*,.xlsx" multiple hidden>
+          <div class="msgbar" id="msg" hidden><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"/><path d="M8 7.5v3.5M8 5v.01"/></svg><span id="status"></span></div>
+        </div>
+      </details>
+      <details class="fasttab" id="editBox">
+        <summary><svg class="chev" viewBox="0 0 16 16"><path d="M6 3.5 10.5 8 6 12.5"/></svg>Lines (check or edit)</summary>
+        <div class="tabbody">
+          <label class="lbl" for="runsText">One run per line</label>
+          <textarea id="runsText" spellcheck="false"></textarea>
+          <p class="help">Stores are listed in delivery order, first stop first. Format <code>run ID: store numbers</code>, e.g. <code>6100183844: 49 123 98</code>. A line without a colon, like <code>Nov 15, 2026</code>, starts a new delivery date.</p>
+        </div>
+      </details>
+      <details class="fasttab" id="emailBox">
+        <summary><svg class="chev" viewBox="0 0 16 16"><path d="M6 3.5 10.5 8 6 12.5"/></svg>Email</summary>
+        <div class="tabbody">
+          <label class="lbl" for="emailTo">Send to</label>
+          <input type="email" id="emailTo" class="textin" autocomplete="email" spellcheck="false">
+          <p class="help">Email sends the Excel schedule and the printable PDF from your connected Gmail.</p>
+          <button class="cmd primary" data-email style="align-self:flex-start"><svg viewBox="0 0 16 16"><rect x="2" y="3.5" width="12" height="9" rx="1"/><path d="M2.5 4.5 8 9l5.5-4.5"/></svg>Send email</button>
+        </div>
+      </details>
+    </aside>
+
+    <section class="panel" aria-label="Sequenced runs">
+      <div class="gridhead"><h2>Sequenced runs</h2><span class="tag" id="exampleTag">Sample data</span><button class="cmd pdfbtn" data-email><svg viewBox="0 0 16 16"><rect x="2" y="3.5" width="12" height="9" rx="1"/><path d="M2.5 4.5 8 9l5.5-4.5"/></svg>Email</button><button class="cmd" data-xlsx><svg viewBox="0 0 16 16"><rect x="2" y="2.5" width="12" height="11" rx="1"/><path d="M2 6h12M2 9.5h12M6 2.5v11"/></svg>Excel schedule</button><button class="cmd primary" data-pdf><svg viewBox="0 0 16 16"><path d="M4 1.5h5.5L13 5v9.5H4z"/><path d="M9.5 1.5V5H13M6 9.5h5M6 12h3.5"/></svg>Download PDF to print</button></div>
+      <div class="gridwrap">
+        <table>
+          <thead><tr><th class="seq">Seq</th><th>Run ID</th><th>Stores</th><th>Status</th></tr></thead>
+          <tbody id="groups"></tbody>
+        </table>
+      </div>
+      <div class="foot">Runs are ordered by how far their farthest store is from the Ottawa DC.</div>
+    </section>
+  </div>
+</main>
+
+<div class="scrim" id="datePick" hidden>
+  <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dateTitle">
+    <h3 id="dateTitle">Which delivery date?</h3>
+    <p class="help">The sheet has more than one date. Choose the one to make the file for.</p>
+    <div class="datelist" id="dateList"></div>
+    <div class="row-end"><button class="cmd" id="dateCancel">Cancel</button><button class="cmd primary" id="dateOk">Continue</button></div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+<script>
+const STORES = {"39":["LCBO","Cobourg","63 ALBERT ST. K9A 2P8",43.95842,-78.16771,"3h30m"],"41":["LCBO","Ottawa","665 INDUSTRIAL AVENUE K1G 0Z1",45.41102,-75.63933,"10m"],"42":["LCBO","Brockville","179 KING STREET WEST K6V 3R6",44.58751,-75.6875,"1h25m"],"49":["LCBO","Cornwall","1315-B SECOND STREET K6H 7C4",45.02579,-74.70551,"1h15m"],"54":["LCBO","North Bay","186 WORTHINGTON ST. W. P1B 3B2",46.31289,-79.46276,"4h15m"],"55":["LCBO","Pembroke","1050 PEMBROKE ST. E. K8A 6Z2",45.82068,-77.0816,"2h10m"],"56":["LCBO","Prescott","325 KING STREET WEST K0E 1T0",44.70796,-75.51639,"1h10m"],"58":["LCBO","Timmins","681 ALGONQUIN BLVD. EAST P4N 8S6",48.47603,-81.3142,"8h15m"],"67":["LCBO","Haileybury","316 BROADWAY STREET P0J 1K0",47.44956,-79.63186,"5h45m"],"70":["LCBO","Smiths Falls","123 LOMBARD STREET K7A 5B8",44.89058,-76.02972,"1h05m"],"71":["LCBO","Gananoque","189 KING STREET EAST K7G 1G3",44.33046,-76.16075,"1h45m"],"72":["LCBO","Perth","80 DUFFERIN STREET K7H 3A7",44.90808,-76.2661,"1h10m"],"75":["LCBO","Iroquois Falls","187 DEVONSHIRE AVE P0K 1E0",48.76711,-80.67818,"7h45m"],"76":["LCBO","Cobalt","28 SILVER STREET P0J 1C0",47.39569,-79.68602,"5h50m"],"78":["LCBO","New Liskeard","55 ARMSTRONG STREET N P0J 1P0",47.50686,-79.67125,"6h05m"],"81":["LCBO","Sturgeon Falls","55 FRONT STREET P2B 2G8",46.36632,-79.93041,"4h25m"],"85":["LCBO","Arnprior","45 Winners Circle Dr. K7S 3G9",45.4218,-76.36798,":50m"],"89":["LCBO","Mattawa","450 VALOIS DRIVE P0H 1V0",46.31679,-78.70048,"3h15m"],"91":["LCBO","Kirkland Lake","5 SUMMERHAYES AVENUE P2N 3H7",48.15225,-80.03624,"6h45m"],"92":["LCBO","Englehart","65 FOURTH AVENUE P0J 1H0",47.82577,-79.87412,"6h10m"],"94":["LCBO","Eganville","234 BONNECHERE STREET W K0J 1T0",45.54383,-77.10576,"1h45m"],"96":["LCBO","Deseronto","78 ST. GEORGE STREET K0K 1X0",44.19497,-77.05028,"2h30m"],"98":["LCBO","Alexandria","410 MAIN STREET SOUTH K0C 1A0",45.30016,-74.62813,"1h00m"],"99":["LCBO","Embrun","757 NOTRE DAME ST. K0A 1W1",45.26862,-75.30254,":25m"],"105":["LCBO","Tamworth","714 ADDINGTON STREET EAST K0K 3G0",44.48788,-76.99434,"2h15m"],"111":["LCBO","Westport","15 CHURCH STREET #3 K0G 1X0",44.67909,-76.39616,"1h30m"],"113":["LCBO","Barrys Bay","18 DUNN STREET K0J 1B0",45.48806,-77.68029,"2h25"],"117":["LCBO","Chapleau","25 LORNE STREET SOUTH P0M 1K0",47.84265,-83.40082,"10h30m"],"118":["LCBO","Capreol","12 HANNA STREET P0M 1H0",46.70625,-80.92195,"6h15m"],"119":["LCBO","Merrickville","205 ELGIN STREET K0G 1N0",44.91549,-75.8347,"1h05m"],"121":["LCBO","Bourget","3926 CHAMPLAIN Rd. K0A 1E0",45.43115,-75.15623,":35m"],"123":["LCBO","Lancaster","16 MOLAN STREET K0C 1N0",45.14135,-74.49876,"1h20m"],"125":["LCBO","Rockland","3000 RICHELIEU ST. UNIT 2 K4K 0B5",45.53407,-75.30567,":30m"],"127":["LCBO","Morrisburg","15 MAIN STREET K0C 1X0",44.90032,-75.18368,":55m"],"132":["LCBO","Carleton Place","525 MCNEELY AVENUE K7C 0A8",45.13243,-76.11848,":45m"],"135":["LCBO","Madoc","219 RUSSELL STREET K0K 2K0",44.51011,-77.47828,"2h45m"],"136":["LCBO","Minden","18 WATER STREET K0M 2K0",44.92657,-78.72324,"4h00m"],"140":["LCBO","Vanier","230 MONTREAL ROAD K1L 6C6",45.43568,-75.6619,":15m"],"142":["LCBO","Hasting","18 FRONT STREET WEST K0L 1Y0",44.30886,-77.95746,"3h10m"],"144":["LCBO","Renfrew","910 O'BRIEN ROAD K7V 0B4",45.47741,-76.65669,"1h05m"],"159":["LCBO","South River","287 HIGHWAY 124 P0A 1X0",45.83698,-79.3768,"5h00m"],"162":["LCBO","Matheson","423 HWY. 11 P0K 1N0",48.53219,-80.46268,"7h25m"],"174":["LCBO","Tweed","16 BRIDGE STREET E K0K 3J0",44.47995,-77.31423,"2h30m"],"176":["LCBO","Marmora","23 FORSYTH STREET K0K 2M0",44.48327,-77.68301,"2h45m"],"178":["LCBO","Campbellford","37 FRONT STREET SOUTH K0L 1L0",44.30692,-77.79773,"3h00m"],"197":["LCBO","Deep River","47 CHAMPLAIN AVE. K0J 1P0",46.1004,-77.48856,"2h15m"],"208":["LCBO","Bancroft","315 HASTINGS ST. NORTH K0L 1C0",45.0599,-77.85681,"2h50m"],"211":["LCBO","Kemptville","324 COLONNADE DR. E. #100 K0G 1J0",45.02995,-75.63047,":45m"],"212":["LCBO","Ottawa","222 RICHMOND ROAD K1Z 6W6",45.39408,-75.74906,":15m"],"222":["LCBO","Bobcaygeon","37 KING STREET EAST K0M 1A0",44.53588,-78.54136,"3h50m"],"223":["LCBO","Haliburton","230 HIGHLAND STREET K0M 1S0",45.04636,-78.50754,"3h50m"],"231":["LCBO","Havelock","30 OTTAWA STREET W K0L 1Z0",44.43351,-77.88984,"3h00m"],"235":["LCBO","Powassan","601 MAIN STREET P0H 1Z0",46.07677,-79.35995,"4h15m"],"236":["LCBO","Chelmsford","3468 ERRINGTON AVE. P0M 1L0",46.57923,-81.19825,"6h00m"],"241":["LCBO","Temagami","3 WILDFLOWER AVE. P0H 2H0",47.06392,-79.79006,"3h25m"],"247":["LCBO","Brighton","11 PARK STREET K0K 1H0",44.04116,-77.73739,"3h00m"],"261":["LCBO","Lakefield","2 NICHOLLS ST K0L 2H0",44.42122,-78.27056,"3h25m"],"262":["LCBO","Iroquois","17 PLAZA DRIVE K0E 1K0",44.84958,-75.3166,"1h00m"],"266":["LCBO","Petawawa","2 RENFREW STREET K8H 2H3",45.88672,-77.25812,"1h55m"],"280":["LCBO","Elk Lake","55 FIRST STREET P0J 1G0",47.73211,-80.33824,"7h00m"],"290":["LCBO","Port Loring","14 WILSON LAKE CRES. P0H 1Y0",45.91619,-79.9859,"6h10m"],"301":["LCBO","Almonte","124 QUEEN STREET K0A 1A0",45.22843,-76.19348,":50m"],"303":["LCBO","Chesterville","150 QUEEN STREET K0C 1H0",45.1015,-75.23659,":45m"],"304":["LCBO","Cardinal","623 HWY. 2, CARDINAL VILLAGE SQ. K0E 1E0",44.7883,-75.38245,"1h00m"],"307":["LCBO","Kinmount","4094 HIGHWAY 121 K0M 2A0",44.78433,-78.65275,"3h55m"],"308":["LCBO","St. Isidore","2538 ST. ISIDORE ST. K0C 2B0",45.38853,-74.90624,":45m"],"309":["LCBO","Maxville","3 MAIN STREET K0C 1T0",45.28833,-74.85525,":45m"],"314":["LCBO","Killaloe","161 QUEEN STREET K0J 2A0",45.55519,-77.41614,"2h00m"],"316":["LCBO","Athens","19 MAIN STREET E. K0E 1B0",44.62621,-75.95086,"1h35m"],"318":["LCBO","Apsley","3 BURLEIGH STREET K0L 1A0",44.75089,-78.09151,"3h10m"],"319":["LCBO","Whitney","16 HAY CREEK ROAD K0J 2M0",45.4925,-78.23831,"3h00m"],"324":["LCBO","Ottawa","1385 CARLING AVENUE K1Z 7L6",45.38638,-75.73941,":20m"],"327":["LCBO","Hanmer","5-5085 HWY 69 P3P 1P7",46.43228,-80.90357,"6h45m"],"338":["LCBO","Foleyet","30 YOUNG STREET P0M 1T0",48.24468,-82.44173,"9h15m"],"349":["LCBO","Vankleek Hill","23 MILL STREET K0B 1R0",45.51814,-74.65264,"1h00m"],"351":["LCBO","Brockville","2075 PARKDALE AVE K6V 0B4",44.61507,-75.6828,"1h15m"],"352":["LCBO","Elgin","131 PERTH STREET K0G 1E0",44.61175,-76.22813,"1h40m"],"363":["LCBO","North Bay","536 LAKESHORE DRIVE P1A 2E6",46.27252,-79.44327,"4h05m"],"364":["LCBO","Frankford","14 KING DRIVE NORTH K0K 2C0",44.20169,-77.59689,"3h00m"],"368":["LCBO","Ottawa","4750 BANK STREET K1T 0A8",45.31895,-75.59564,":10m"],"375":["LCBO","Plantagenet","240 OLD HWY. 17 K0B 1L0",45.5398,-74.99163,":45m"],"377":["LCBO","Sharbot Lake","24593 HIGHWAY 7 K0H 2P0",44.79704,-76.68229,"1h30m"],"380":["LCBO","Colborne","9 TORONTO ROAD, HWY 2 K0K 1S0",44.00559,-77.88927,"3h10m"],"384":["LCBO","Ottawa","22 ISABELLA STREET K1S 1V4",45.4107,-75.68538,":12m"],"387":["LCBO","North Bay","1711 ALGONQUIN AVE. P1B 4Y8",46.33057,-79.46687,"4h00m"],"388":["LCBO","Nepean","1811 ROBERTSON ROAD K2H 8X3",45.33021,-75.81718,":24m"],"394":["LCBO","Ottawa","2164 CARLING AVENUE K2A 1H3",45.36995,-75.77,":20m"],"399":["LCBO","Dorset","1059 MAIN STREET P0A 1E0",45.24621,-78.89351,"4h50m"],"400":["LCBO","Ottawa","1910 ST. LAURENT BLVD. K1G 1A4",45.39824,-75.6238,":07"],"405":["LCBO","Azilda","93 NOTRE DAME ST. W. P0M 1B0",46.55184,-81.11717,"5h50m"],"410":["LCBO","Northbrook","12297 HWY 41 K0H 2G0",44.73572,-77.1597,"2h10m"],"412":["LCBO","Nepean","543 WEST HUNT CLUB RD. K2G 5W5",45.33433,-75.72789,":20m"],"414":["LCBO","Stirling","125 NORTH STREET K0K 3E0",44.29946,-77.54882,"2h10m"],"422":["LCBO","Onaping","Highway 544 P0M 2R0",46.60785,-81.51897,"5h50m"],"423":["LCBO","Lansdowne","992 PRINCE STREET K0E 1L0",44.40037,-76.01839,"1h40m"],"431":["LCBO","Nepean","1363 WOODROFFE AVE. UNIT A K2G 1V7",45.35082,-75.7585,":28"],"433":["LCBO","Calabogie","703 MILL STREET K0J 1H0",45.29408,-76.73114,"1h45m"],"435":["LCBO","Long Sault","33 LONG SAULT DR. K0C 1P0",45.02907,-74.89489,"1h00m"],"439":["LCBO","Portland","34 COLBORNE STREET K0G 1V0",44.69861,-76.18896,"1h25m"],"441":["LCBO","Casselman","644 PRINCIPALE STREET K0A 1M0",45.30799,-75.08255,":35m"],"442":["LCBO","Cobden","22 TRUELOVE ST. K0J 1K0",45.62754,-76.88664,"1h45m"],"443":["LCBO","Gloucester","1130 BLAIR ROAD K1J 1K8",45.43363,-75.60869,":14m"],"447":["LCBO","Wilberforce","2763 ESSONVILLE ROAD K0L 3C0",45.03685,-78.22274,"3h200m"],"449":["LCBO","Wellington","462 MAIN STREET K0K 3L0",43.94915,-77.36535,"3h10m"],"455":["LCBO","Carp","461 DONALD B MUNRO DR.K0A 1L0",45.34471,-76.03795,":55m"],"460":["LCBO","Delta","39 KING STREET K0E 1G0",44.61205,-76.121,"1h40m"],"466":["LCBO","Alfred","602 ST. PHILIPPE STREET K0B 1A0",45.55638,-74.88983,"1h05m"],"468":["LCBO","Bridgenorth","861 WARD STREET K0L 1H0",44.38182,-78.38329,"3h45m"],"472":["LCBO","Warkworth","44 CHURCH STREET K0K 3K0",44.20182,-77.88648,"3h20m"],"474":["LCBO","Rossmore","5503 PRINCE EDWARD SQUARE K8N 4Z7",44.13828,-77.3863,"2h55m"],"475":["LCBO","Sydenham","4387 MILL STREET K0H 2T0",44.41009,-76.59721,"2h00m"],"476":["LCBO","Denbigh","22353 HIGHWAY 41 K0H 1L0",45.12813,-77.26678,"2h20m"],"478":["LCBO","Maynooth","33004 HWY. 62 NORTH K0L 2S0",45.23103,-77.93638,"3h10m"],"479":["LCBO","Lanark","99 CLARENCE STREET& GEORGE K0G 1K0",45.01838,-76.36512,"1h35m"],"492":["LCBO","Callander","5 MAIN STREET NORTH P0H 1H0",46.22273,-79.3653,"4h30m"],"496":["LCBO","Richmond","5921 PERTH ST, K0A 2Z0",45.20267,-75.83029,":38m"],"500":["LCBO","Ottawa","953 BANK STREET K1S 3W7",45.39922,-75.68593,":16m"],"503":["LCBO","Plevna","7423 HIGHWAY 506 K0H 2M0",44.96228,-76.98395,"2h50m"],"504":["LCBO","Norwood","4246 HWY. # 7 K0L 2V0",44.38151,-77.98141,"3h10m"],"506":["LCBO","Earlton","4 - 10TH AVENUE SOUTH P0J 1E0",47.7107,-79.82472,"6h25m"],"507":["LCBO","Garson","3060 FALCONBRIDGE HWY.P3L 1P6",46.54914,-80.87629,"5h50m"],"515":["LCBO","Ottawa","2269 RIVERSIDE DR. UNIT #8 K1H 8K2",45.38594,-75.6784,":50m"],"517":["LCBO","Amherstview","18 MANITOU CRESENT WEST K7N 1S3",44.21913,-76.64502,"2h20m"],"520":["LCBO","Seeleys Bay","106 DRYNAN WAY, UNIT 10 K0H 2N0",44.47412,-76.23782,"2h00m"],"521":["LCBO","Manotick","1154 CURRIER STREET K4M 1A5",45.22347,-75.68284,":28m"],"524":["LCBO","Hagar","7260 HWY 535 P0M 1X0",46.44783,-80.40814,"5h00m"],"526":["LCBO","Ottawa","465 BANK STREET K2P 1Z2",45.41144,-75.69302,":18m"],"535":["LCBO","Coe Hill","8 CENTRE STREET K0L 1P0",44.86203,-77.84057,"3h30m"],"538":["LCBO","Ottawa","103A-50 RIDEAU STREET K1N 9J7",45.42529,-75.69252,":17m"],"540":["LCBO","Cornwall","430 NINTH ST W UNIT B1 K6J 3A7",45.02507,-74.74624,"1h10m"],"547":["LCBO","Ottawa","111 ALBERT STREET UNIT 117 K1A 0W9",45.42165,-75.69742,":17m"],"552":["LCBO","Val caron","3140 HWY. 69 NORTH P3N 1G3",46.43339,-80.94713,"6h05m"],"561":["LCBO","Buckhorn","1976 LAKEHURST ROAD K0L 1J0",44.55694,-78.3491,"3h50m"],"569":["LCBO","Stittsville","6065 HAZELDEAN ROAD K2S 1B8",45.2721,-75.9315,":52m"],"570":["LCBO","Warsaw","906 WATER STREET K0L 3A0",44.43079,-78.13771,"3h20m"],"574":["LCBO","Bonfield","234 YONGE STREET P0H 1E0",46.23579,-79.14502,"4h05m"],"576":["LCBO","Coniston","24 - 5 AMANDA STREET P0M 1M0",46.49422,-80.84605,"5h14m"],"578":["LCBO","Winchester","578 MAIN STREET WEST K0C 2K0",45.09079,-75.3614,":32m"],"588":["LCBO","Verner","10442 HWY. 17 P0H 2M0",46.41319,-80.12895,"5h10m"],"589":["LCBO","Orleans","6487 JEANNE D'ARC BOUL. K1C 2R1",45.47998,-75.53448,":33m"],"594":["LCBO","Bewdley","5087 RICE LAKE DRIVE NORTH K0L 1E0",44.08931,-78.32105,"3h40m"],"597":["LCBO","Beachburg","35 LA PASSE ROAD K0J 1C0",45.73601,-76.86375,"2h00m"],"598":["LCBO","Ottawa","1021 CYRVILLE ROAD K1J 7S3",45.42549,-75.63585,":25m"],"607":["LCBO","Gooderham","1007 GOODERHAM ST. K0M 1R0",44.90675,-78.38041,"4h00m"],"613":["LCBO","Sundridge","10403 HWY 124 P0A 1Z0",45.77034,-79.39392,"5h30m"],"620":["LCBO","Ottawa","1100 POLYTEK STREET K1J 1K8",45.4554,-75.58714,":18m"],"624":["LCBO","Orleans","4220 INNES ROAD K4A 5E6",45.45563,-75.49762,":23m"],"638":["LCBO","Kanata","858 MARCH ROAD K2W 0C9",45.35838,-75.93593,":50m"],"645":["LCBO","Ottawa","981 WELLINGTON ST. W. K1Y 2Y1",45.40584,-75.72307,":21m"],"670":["LCBO","Nepean","4305 STRANDHERD ST. K2J 6E5",45.27062,-75.78249,":33m"],"680":["LCBO","Stittsville","1140 TERRY FOX DRIVE K2S 1B6",45.27588,-75.87456,":30m"],"686":["LCBO","Ottawa","19 BEECHWOOD AVE K1M 1M2",45.43909,-75.67744,":18m"],"694":["LCBO","Ottawa","5150 INNES ROAD K4A 0G4",45.46977,-75.45532,":25m"],"699":["LCBO","Ottawa","4460 LIMEBANK STREET K1V 2N8",45.28771,-75.67178,":24m"],"2141":["LCBO","Cobourg","476 DIVISION STREET COBOURG K9A 3S2",43.96623,-78.16758,"3h20m"],"3502":["BEER STR","North Bay","390 LAKESHORE DR.P1A 2C7",46.2783,-79.44388,"4h25m"],"3503":["BEER STR","North Bay","2035 CASSELLS ST. P1B 4E1",46.31771,-79.44436,"4:20m"],"3504":["BEER STR","Mattawa","511 VALOIS DR @HWY 17 & CHAMPLAIN ST.",46.31718,-78.6984,"3h35m"],"3506":["BEER STR","Powassan","760 MAIN ST. P0H 1Z0",46.07266,-79.35584,"4h30m"],"3507":["BEER STR","South River","310 HWY. 124 P0A 1X0",45.83914,-79.3792,"5h15m"],"3540":["BEER STR","North bay","1065 MAIN ST. WEST P1B 2W2",46.31936,-79.47795,"4h20m"],"3542":["BEER STR","New Liskeard","50 JAFFRAY ST. P0J 1P0",47.50986,-79.68584,"6h20m"],"3544":["BEER STR","Sturgeon Falls","100 FRONT ST. P0H 2G0",46.36579,-79.92638,"4h45m"],"3591":["BEER STR","Chapleau","59 LISGAR ST. P0M 1K0",47.84401,-83.40687,"10h45m"],"3605":["BEER STR","Azilda","93 NOTRE DAME ST. W P0M 1B0",46.55184,-81.11717,"6h00m"],"3607":["BEER STR","Chelmsford","199 AURORE ST. P0M 1L0",46.56746,-81.18828,"6h00m"],"3610":["BEER STR","Hanmer","5085 OLD HWY 69 P3P 1R2",46.66646,-80.91999,"8h20m"],"3611":["BEER STR","Levack","57 3RD. AVE. S P0M 2C0",46.63991,-81.38756,"7h10m"],"3613":["BEER STR","Coniston","24 AMANDA ST. P0M 1M0",46.49404,-80.84691,"10h45m"],"3614":["BEER STR","Garson","3098 FALNCONBRIDGE HWY. P3L 1P5",46.54922,-80.87554,"5h40m"],"3702":["BEER STR","Timmins","230 ALGONQUIN BLVD.W P4N 7C9",48.47655,-81.34217,"8h30m"],"3703":["BEER STR","South Porcupine","4145 HAROLD AVE. P0N 1H0",48.48475,-81.21609,"8h45m"],"3740":["BEER STR","Timmins","326 KNOX AVE. P4N 1K7",48.4714,-81.32585,"8h20m"],"3743":["BEER STR","Iroquois Falls","227 CAMBRIDGE AVE. P0K 1E0",48.76536,-80.67884,"7h55m"],"3745":["BEER STR","Kirkland Lake","25 STATION RD. P2N 3H7",48.15518,-80.02944,"7h00m"],"4301":["BEER STR","Belleville","167 Bell Blvd K8P 5N8",44.18535,-77.40233,"2h45m"],"4302":["BEER STR","Belleville","91 FRONT ST. S. K8N 2Y5",44.16061,-77.38129,"2h45m"],"4303":["BEER STR","Brighton","72 MAIN ST. K0K 1H0",44.04191,-77.73966,"3h00m"],"4304":["BEER STR","Madoc","46 WELLINGTON ST K0K 2K0",44.50801,-77.46917,"3h00m"],"4305":["BEER STR","Marmora","100 FORSYTHE ST. K0K 2M0",44.47811,-77.67799,"3h00m"],"4306":["BEER STR","Napanee","450 CENTRE STREET K7R 1P8",44.25816,-76.96342,"2h20m"],"4307":["BEER STR","Northbrook","12334 HWY 41 K0H 2G0",44.73698,-77.16161,"2h20m"],"4308":["BEER STR","Picton","412 PICTON MAIN ST. K0K 2T0",44.01684,-77.13562,"3h00m"],"4309":["BEER STR","Trenton","49 BYRON STREET K8V 2X5",44.10515,-77.56768,"2h55m"],"4310":["BEER STR","Tweed","85B VICTORIA ST. N. K0K 3J0",44.47604,-77.31201,"2h40m"],"4311":["BEER STR","Sharbot Lake","24585B HWY 7 @38 K0H2P0",44.79729,-76.68162,"1h45m"],"4351":["BEER STR","Cornwall","838 SYDNEY ST. K6J 4J7",45.02856,-74.73263,"1h05m"],"4352":["BEER STR","Cornwall","1396 2ND ST. E. K6H 7C4",45.0278,-74.70188,"1h10m"],"4353":["BEER STR","Cornwall","960 BROOKDALE AVE. K6J 4J7",45.02407,-74.75101,"1h05m"],"4354":["BEER STR","Alexandria","118 MAIN ST. K0C 1A0",45.31305,-74.63868,"1h00m"],"4356":["BEER STR","Morrisburg","111 MAIN ST. K0C 1X0",44.90123,-75.18173,"1h05m"],"4358":["BEER STR","Prescott","970 EDWARD ST.N. K0E 1T0",44.71852,-75.52067,"1h03m"],"4392":["BEER STR","Brockville","125 STEWART BLVD.K6V 4W4",44.60036,-75.69829,"1h15m"],"4502":["BEER STR","Kingston","290 CONCESSION ST. K7L 2C1",44.24081,-76.50874,"2h05m"],"4503":["BEER STR","Kingston","1675 BATH ROAD K7M 4X2",44.23656,-76.56905,"2h05m"],"4505":["BEER STR","Kingston","500 PRINCESS ST. K7L 1C5",44.23435,-76.49654,"2h05m"],"4506":["BEER STR","Amherstview","4501 BATH RD. K7N 1A6",44.21894,-76.64406,"2h15m"],"4507":["BEER STR","Gananoque","580 KING ST E. K7G 1H2",44.33601,-76.15349,"1h45m"],"4508":["BEER STR","Sydenham","4387 MILL ST. K0H 2T0",44.41009,-76.59721,"2h00m"],"4509":["BEER STR","Westport","77 BEDFORD ST.. K0G 1X0",44.67979,-76.40632,"1h40m"],"4510":["BEER STR","Kingston","1090 MIDLAND AVE. K7P 2X9",44.26354,-76.57356,"2h05m"],"4511":["BEER STR","Kingston","88 DALTON AVE. K7K 0C3",44.26538,-76.50237,"2h00m"],"4553":["BEER STR","Bobcaygeon","25 KING ST. E. K0M 1A0",44.53552,-78.54235,"4h05m"],"4556":["BEER STR","Haliburton","15 HOPS DRIVE K0M 1S0",45.04661,-78.53425,"2h10m"],"4558":["BEER STR","Minden","12325 HIGHWAY 35 K0M 2K0",44.91859,-78.72114,"4h10m"],"4601":["BEER STR","Ottawa","1860 BANK ST. K1Y 4S8",45.36898,-75.66367,":10m"],"4603":["BEER STR","Ottawa","1984 BASELINE RD.",45.35141,-75.76209,":29m"],"4606":["BEER STR","Ottawa","1546 SCOTT ST.",45.40416,-75.7328,":18m"],"4607":["BEER STR","Ottawa","548 MONTREAL RD.",45.44122,-75.64525,":12m"],"4608":["BEER STR","Ottawa","900 BANK ST.",45.40032,-75.68713,":16m"],"4609":["BEER STR","Ottawa","515 SOMERSET ST. W.",45.41355,-75.7014,":17m"],"4610":["BEER STR","Ottawa","2144 CARLING AVE",45.36985,-75.76783,":27m"],"4614":["BEER STR","Bells Corners","82 NORTHSIDE RD.",45.3271,-75.81873,":32m"],"4615":["BEER STR","Ottawa","1669 MERIVALE RD.",45.34952,-75.7322,":23m"],"4617":["BEER STR","Ottawa","1910 ST. LAURENT BLVD.",45.39824,-75.6238,":07m"],"4618":["BEER STR","Gloucester","3-1401 BLAIR PLACE",45.4349,-75.60341,":12m"],"4620":["BEER STR","Barrhaven","3500 FALLOWFIELD RD.",45.29303,-75.74235,":26m"],"4621":["BEER STR","Embrun","753 NOTRE DAME ST. K0A 1W1",45.26894,-75.30402,":27m"],"4622":["BEER STR","Kanata","150 KATIMAVIK DR.",45.31239,-75.89584,":48m"],"4623":["BEER STR","Manotick","1160 BEAVERWOOD RD.. K4M 1A3",45.22293,-75.68357,":26m"],"4624":["BEER STR","Orleans","6485 JEANNE D'ARC BLVD.",45.48005,-75.53431,":24m"],"4625":["BEER STR","Rockland","2729 Laurier St.",45.54247,-75.29945,":40m"],"4626":["BEER STR","Orleans","1675 Tenth Line Rd.",45.46902,-75.49123,":24m"],"4627":["BEER STR","Kemptville","330 Colonnade Dr. K0G 1J0",45.02918,-75.63091,":44m"],"4628":["BEER STR","Perth","100 Wilson St. West",44.90617,-76.26054,"1h20m"],"4629":["BEER STR","Stittsville","1250 Main Street, Crossing Bridge",45.26844,-75.93066,":46m"],"4630":["BEER STR","Kanata","720 Eagleson Road",45.28504,-75.86812,":39m"],"4641":["BEER STR","Hawkesbury","1036 Lansdowne Rd.",45.6067,-74.59429,"1h05m"],"4642":["BEER STR","Smiths Falls","75 Lombard St.",44.89366,-76.02769,"1h05m"],"4643":["BEER STR","Ottawa","2750 Swansea Crescent",45.37941,-75.61483,":03m"],"4652":["BEER STR","Deep river","33225 Hwy. 17 K0J 1P0",46.0988,-77.49741,"2h25m"],"4653":["BEER STR","Eganville","8643 Bonnechere St. W K0J 1T0",45.54901,-77.11073,"2h00m"],"4654":["BEER STR","Petawawa","3 Renfrew St.",45.88698,-77.25775,"2h05m"],"4655":["BEER STR","Renfrew","252 Coumbe St.",45.2247,-76.19368,"1h20m"],"4656":["BEER STR","Almonte","113 High St.",45.43403,-76.34511,"1h05m"],"4657":["BEER STR","Arnprior","120 Madawaska Blvd.",45.43403,-76.34511,"1h10m"],"4658":["BEER STR","Carleton Place","575 MCNEELY AVE",45.13085,-76.11833,"1h00m"],"4690":["BEER STR","Pembroke","311 Nelson St.",45.82917,-77.10701,"1h55m"],"4691":["BEER STR","Barry's Bay","23 Opeongo Line West",45.48788,-77.67235,"2h35m"],"4701":["BEER STR","Peterborough","570 LANSDOWNE ST. WEST",44.28663,-78.32879,"3h34m"],"4702":["BEER STR","Peterborough","139 GEORGE STREET N.",44.29761,-78.31994,"3h34m"],"4703":["BEER STR","Peterborough","1154 CHEMONG ROAD",44.32973,-78.33942,"3h34m"],"4705":["BEER STR","Bridgenorth","882 WARD STREET",44.38362,-78.38424,"3h40m"],"4706":["BEER STR","Campbellford","80 CENTRE STREET",44.30502,-77.79276,"3h12m"],"4707":["BEER STR","Hastings","23 FRONT STREET EAST",44.30989,-77.95575,"3h15m"],"4708":["BEER STR","Havelock","28 OTTAWA STREET",44.43356,-77.88975,"3h10m"],"4709":["BEER STR","Lakefield","102 QUEEN STREET",44.42736,-78.27039,"3h40m"],"4710":["BEER STR","Peterborough","1900 LANSDOWNE ST W",44.27466,-78.37748,"3h35m"]}; // id: [chain, city, address, lat, lng, transit time]
+const DEPOT = { lat: 45.3857, lng: -75.6015 };
+const EXAMPLE = "Nov 2, 2026\n6100183841: 526\n6100183842: 645 349\n6100183843: 443\n6100183844: 98 123 49\n6100184070: D102\nNov 15, 2026\n6100178662: 144\n6100181143: 500";
+const ICON_X = '<svg viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></svg>';
+const ICON_COPY = '<svg viewBox="0 0 16 16"><rect x="5" y="5" width="8.5" height="8.5" rx="1"/><path d="M3 10.5V3.5a1 1 0 0 1 1-1h6.5"/></svg>';
+
+const $ = id => document.getElementById(id);
+const els = { text: $("runsText"), groups: $("groups"), sortBy: $("sortBy"), dir: $("dir"), editBox: $("editBox"),
+  photo: $("photo"), drop: $("drop"), thumbs: $("thumbs"), dropText: $("dropText"), read: $("readBtn"), pageCount: $("pageCount"),
+  stop: $("stopBtn"), clear: $("clearBtn"), status: $("status"), msg: $("msg"), copyAll: $("copyAll"), exampleTag: $("exampleTag") };
+
+function km(a, b) {
+  const r = d => d * Math.PI / 180, R = 6371;
+  const dLat = r(b.lat - a.lat), dLng = r(b.lng - a.lng);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(r(a.lat)) * Math.cos(r(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+function minutes(t) {
+  const m = String(t || "").trim().match(/^(?:(\d+)\s*h)?\s*:?\s*(\d+)?\s*m?$/i);
+  if (!m || (!m[1] && !m[2])) return null;
+  return (+m[1] || 0) * 60 + (+m[2] || 0);
+}
+function fmtTime(min) { return min == null ? "—" : (Math.floor(min / 60) ? Math.floor(min / 60) + "h " : "") + String(min % 60).padStart(2, "0") + "m"; }
+
+// Store tokens look like "526", "0049" or "D102"; only plain numbers can match the store list.
+function normStore(tok) { const m = tok.match(/^([A-Za-z]*)0*(\d+)$/); return m ? m[1].toUpperCase() + m[2] : null; }
+function stop(id) {
+  const s = STORES[id];
+  if (!s) return { id, known: false };
+  return { id, known: true, city: s[1], km: km(DEPOT, { lat: s[3], lng: s[4] }), min: minutes(s[5]) };
+}
+
+// Text -> [{date, runs:[{id, stores:[]}]}]; repeated dates and repeated run IDs (from other pages) are merged.
+function parse(text) {
+  const groups = []; let g = null;
+  const group = date => { let x = groups.find(y => y.date === date); if (!x) { x = { date, runs: [] }; groups.push(x); } return x; };
+  for (let line of text.split(/\n+/)) {
+    line = line.trim(); if (!line) continue;
+    const c = line.indexOf(":");
+    if (c < 0) { if (line !== "Runs" || !g) g = group(line === "Runs" ? "" : line); continue; } // an undated page continues the date before it
+    if (!g) g = group("");
+    const id = line.slice(0, c).trim();
+    const stores = line.slice(c + 1).split(/[\s,]+/).map(normStore).filter(Boolean);
+    const run = groups.flatMap(x => x.runs).find(r => r.id === id);
+    if (run) stores.forEach(s => run.stores.includes(s) || run.stores.push(s));
+    else g.runs.push({ id, stores: [...new Set(stores)] });
+  }
+  return groups.filter(g => g.runs.length);
+}
+
+function score(run) {
+  const useTime = els.sortBy.value === "time";
+  // The sheet lists stores in load order; the truck delivers bottom-up, so the last store listed is the first stop.
+  const stops = run.stores.map(stop), known = stops.filter(s => s.known);
+  const far = known.reduce((best, s) => (!best || (useTime ? (s.min ?? 0) > (best.min ?? 0) : s.km > best.km)) ? s : best, null);
+  return { ...run, stops, far, key: far ? (useTime ? far.min ?? 0 : far.km) : null };
+}
+function sortGroup(g) {
+  const dirFar = els.dir.value === "far";
+  const runs = g.runs.map(score);
+  const ok = runs.filter(r => r.key != null).sort((a, b) => dirFar ? b.key - a.key : a.key - b.key);
+  return { ...g, runs: [...ok, ...runs.filter(r => r.key == null)] };
+}
+
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]); }
+
+let lastSorted = [];
+function render() {
+  const groups = parse(els.text.value).map(sortGroup);
+  lastSorted = groups;
+  els.exampleTag.hidden = els.text.value.trim() !== EXAMPLE;
+  const all = groups.flatMap(g => g.runs);
+  const check = all.filter(r => !r.far || r.stops.some(s => !s.known)).length;
+  const farthest = all.filter(r => r.far).sort((a, b) => b.far.km - a.far.km)[0];
+  $("tRuns").textContent = all.length;
+  $("tStops").textContent = all.reduce((n, r) => n + r.stops.length, 0);
+  $("tDates").textContent = groups.length;
+  $("tCheck").textContent = check; $("tCheckTile").classList.toggle("alert", check > 0);
+  if (!groups.length) { els.groups.innerHTML = '<tr><td colspan="4" class="empty">No runs yet. Add pages of the run sheet, then select Read &amp; sort.</td></tr>'; return; }
+  els.groups.innerHTML = groups.map((g, gi) => {
+    const head = `<tr class="grp"><td colspan="4"><div class="grpline"><b>Delivery date: ${esc(g.date || "Not shown")}</b><span class="n">${g.runs.length} run${g.runs.length === 1 ? "" : "s"}</span>
+      <button class="cmd" data-copy="${gi}">${ICON_COPY}Copy IDs</button></div></td></tr>`;
+    const rows = g.runs.map((r, i) => {
+      const unknown = r.stops.some(s => !s.known), bad = !r.far || unknown;
+      const stops = r.stops.length
+        ? r.stops.map(s => s.known ? esc(s.id) : `<span class="bad">${esc(s.id)} (not on store list)</span>`).join(", ")
+        : `<span class="bad">No stores on these pages. Add the page this run starts on.</span>`;
+      const status = bad ? `<span class="status check"><i></i>Check</span>` : `<span class="status"><i></i>Ready</span>`;
+      return `<tr class="run${!r.far ? " flag" : ""}"><td class="seq">${i + 1}</td><td class="rid">${esc(r.id)}</td><td class="stores">${stops}</td><td>${status}</td></tr>`;
+    }).join("");
+    return head + rows;
+  }).join("");
+}
+
+function idsText(g) { return (g.date ? g.date + "\n" : "") + g.runs.map(r => r.id).join("\n"); }
+async function copy(text, btn) {
+  const label = btn.lastChild, old = label.textContent;
+  try { await navigator.clipboard.writeText(text); label.textContent = "Copied"; }
+  catch { label.textContent = "Copy blocked"; }
+  setTimeout(() => label.textContent = old, 1500);
+}
+els.groups.addEventListener("click", e => { const b = e.target.closest("[data-copy]"); if (b) copy(idsText(lastSorted[+b.dataset.copy]), b); });
+els.copyAll.addEventListener("click", () => copy(lastSorted.map(idsText).join("\n\n"), els.copyAll));
+
+els.text.addEventListener("input", () => { save(); render(); });
+[els.sortBy, els.dir].forEach(el => el.addEventListener("change", () => { save(); render(); }));
+
+function save() { try { localStorage.setItem("runsorter3", JSON.stringify({ text: els.text.value, sortBy: els.sortBy.value, dir: els.dir.value, at: els.stampAt })); } catch {} }
+function load() {
+  let s = null; try { s = JSON.parse(localStorage.getItem("runsorter3")); } catch {}
+  els.text.value = s?.text?.trim() ? s.text : EXAMPLE;
+  if (s) { els.sortBy.value = s.sortBy || "km"; els.dir.value = s.dir || "far"; }
+  setStamp(s?.at);
+}
+function setStamp(at) { els.stampAt = at || null; $("stamp").textContent = at ? "Last read " + new Date(at).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }) : ""; }
+
+// ---- Photo reading via Claude ----
+let sample = null, maxImages = 1, files = [], ctl = null;
+function setStatus(msg, kind) {
+  els.msg.hidden = !msg; els.status.textContent = msg || "";
+  els.msg.className = "msgbar" + (kind ? " " + kind : "");
+}
+// files holds {file, url}; new picks are added to the ones already chosen.
+function showPhotos() {
+  els.thumbs.hidden = !files.length; els.clear.disabled = !files.length;
+  els.pageCount.textContent = `${files.length} page${files.length === 1 ? "" : "s"}`;
+  els.thumbs.innerHTML = files.map((p, i) => `<figure class="page"><img src="${p.url}" alt="Page ${i + 1}"><button data-remove="${i}" aria-label="Remove page ${i + 1}">${ICON_X}</button><figcaption>Page ${i + 1}</figcaption></figure>`).join("");
+  els.dropText.innerHTML = files.length ? `<b>Add another page</b><br>Then select Read &amp; sort.` : `<b>Add pages</b><br>Take a photo or pick several, or pick the Planned Shipments .xlsx file.`;
+  els.read.disabled = !sample || !files.length;
+}
+function pick(list) {
+  const all = [...(list || [])];
+  const report = all.find(f => /\.xlsx$/i.test(f.name));
+  if (report) { importReport(report); return; }
+  const imgs = all.filter(f => f.type.startsWith("image/"));
+  if (!imgs.length) { setStatus("Those files aren't photos or an .xlsx report. Add photos of the run sheet or the Planned Shipments file.", "err"); return; }
+  imgs.forEach(f => files.push({ file: f, url: URL.createObjectURL(f) }));
+  showPhotos();
+  setStatus(sample ? "" : "Reading photos isn't available in this view. Enter the lines by hand under Lines.", sample ? "" : "err");
+}
+els.photo.addEventListener("change", () => { pick(els.photo.files); els.photo.value = ""; });
+els.thumbs.addEventListener("click", e => {
+  const b = e.target.closest("[data-remove]"); if (!b) return;
+  const [p] = files.splice(+b.dataset.remove, 1); URL.revokeObjectURL(p.url); showPhotos();
+});
+els.clear.addEventListener("click", () => { files.forEach(p => URL.revokeObjectURL(p.url)); files = []; showPhotos(); setStatus(""); });
+els.drop.addEventListener("dragover", e => { e.preventDefault(); els.drop.classList.add("over"); });
+els.drop.addEventListener("dragleave", () => els.drop.classList.remove("over"));
+els.drop.addEventListener("drop", e => { e.preventDefault(); els.drop.classList.remove("over"); pick(e.dataTransfer.files); });
+document.addEventListener("paste", e => { if (e.clipboardData?.files?.length) pick(e.clipboardData.files); });
+
+const ERRORS = { not_granted: "Claude wasn't allowed to read the photos. Enter the lines by hand under Lines.",
+  rate_limited: "Too many requests right now. Wait a minute and try again.", image_rejected: "A photo couldn't be read. Retake it more clearly.",
+  invalid_json: "The result couldn't be understood. Select Read & sort to try again.", refused: "These photos couldn't be read. Try other pictures.",
+  session_expired: "Sign in to Claude again, then retry.", images_unavailable: "This view can't send photos. Enter the lines by hand under Lines." };
+
+// ---- Delivery order and report import ----
+// entries: [{store, seq, idx}] in sheet order. Lowest STOP SEQUENCE comes off first;
+// without one, the store lowest on the sheet comes off first.
+function deliveryOrder(entries) {
+  const seen = new Map();
+  entries.forEach(e => { if (e.store && !seen.has(e.store)) seen.set(e.store, e); });
+  const key = e => Number.isFinite(e.seq) ? e.seq * 1e5 + e.idx : 1e9 - e.idx;
+  return [...seen.values()].sort((a, b) => key(a) - key(b)).map(e => e.store);
+}
+function linesFrom(dates) { // dates: [{date, runs:[{id, entries}]}]
+  return dates.map(d => (d.date || "Runs") + "\n" + d.runs.map(r => `${r.id}: ${deliveryOrder(r.entries).join(" ")}`).join("\n")).join("\n");
+}
+function mergeRuns(list) { // merge same date / same run seen on different pages
+  const out = [];
+  list.forEach(d => {
+    let g = out.find(x => x.date === d.date) || (out.push({ date: d.date, runs: [] }), out.at(-1));
+    d.runs.forEach(r => {
+      const hit = out.flatMap(x => x.runs).find(x => x.id === r.id);
+      if (hit) hit.entries.push(...r.entries); else g.runs.push({ id: r.id, entries: [...r.entries] });
+    });
+  });
+  return out;
+}
+const cellText = v => v == null ? "" : v instanceof Date ? v.toISOString() : typeof v === "object"
+  ? (v.richText ? v.richText.map(t => t.text).join("") : v.result != null ? String(v.result) : v.text != null ? String(v.text) : "") : String(v);
+const fmtDate = d => d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
+async function importReport(file) {
+  if (!window.ExcelJS) { setStatus("The Excel reader didn't load. Reload the page and try again.", "err"); return; }
+  setStatus(`Reading ${file.name}…`, "busy");
+  try {
+    const wb = new ExcelJS.Workbook(); await wb.xlsx.load(await file.arrayBuffer());
+    const ws = wb.worksheets.find(w => w.state !== "hidden") || wb.worksheets[0];
+    // Find the header row and each column by its name, so moved columns still work.
+    let headRow = 0, col = { date: 1, run: 2, store: 4, seq: 7 };
+    ws.eachRow((row, r) => {
+      if (headRow) return;
+      const names = {}; row.eachCell((c, n) => { names[n] = cellText(c.value).toUpperCase().trim(); });
+      const vals = Object.values(names);
+      if (!vals.some(t => t.includes("SHIPMENT")) || !vals.some(t => t.includes("DESTINATION"))) return;
+      headRow = r;
+      for (const [n, t] of Object.entries(names)) {
+        if (t.includes("SHIPMENT")) col.run = +n;
+        else if (t.includes("DELIVERY") && t.includes("DATE")) col.date = +n;
+        else if (t.includes("DESTINATION") && !t.includes("ALIAS")) col.store = +n;
+        else if (t.includes("STOP") && t.includes("SEQ")) col.seq = +n;
+      }
+    });
+    const dates = []; let curDate = "", curRun = "", g = null;
+    const last = ws.rowCount;
+    for (let r = headRow + 1; r <= last; r++) {
+      const row = ws.getRow(r), dv = row.getCell(col.date).value;
+      if (dv instanceof Date) curDate = fmtDate(dv);
+      else if (typeof dv === "string" && !/total/i.test(dv) && !isNaN(Date.parse(dv))) curDate = fmtDate(new Date(Date.parse(dv + " UTC")));
+      const rt = cellText(row.getCell(col.run).value).trim();
+      if (/total/i.test(rt)) { curRun = ""; continue; }
+      if (rt) curRun = rt;
+      const store = normStore(cellText(row.getCell(col.store).value).trim() || "");
+      if (!curDate || !curRun || !store) continue;
+      if (!g || g.date !== curDate) { g = dates.find(x => x.date === curDate) || (dates.push({ date: curDate, runs: [] }), dates.at(-1)); }
+      let run = g.runs.find(x => x.id === curRun); if (!run) g.runs.push(run = { id: curRun, entries: [] });
+      const sq = Number(cellText(row.getCell(col.seq).value));
+      run.entries.push({ store, seq: Number.isFinite(sq) && sq > 0 ? sq : NaN, idx: r });
+    }
+    if (!dates.length) { setStatus("No runs were found in that file. Check it's the Planned Shipments report.", "err"); return; }
+    els.text.value = linesFrom(dates);
+    setStamp(Date.now()); save(); render();
+    const n = dates.reduce((t, d) => t + d.runs.length, 0);
+    setStatus(`Read ${n} runs on ${dates.length} delivery date${dates.length === 1 ? "" : "s"} from ${file.name}. Download the PDF to print, or the Excel schedule to plan.`);
+  } catch (e) { setStatus("That file couldn't be read. Make sure it's the .xlsx report, not a PDF or CSV.", "err"); }
+}
+
+const PROMPT = `These photos are pages of a delivery dispatch report (a printed table). Read it and list every run.
+
+How the table works:
+- The far-left column sometimes shows a delivery date (e.g. "Nov 15, 2026"). It applies to every run below it until the next date. A row like "Nov 2, 2026 - Total" ends that date.
+- The next column is the RUN ID: a long number such as 6100183841. It is written once, on the first row of the run. The rows under it belong to the same run until a row reading "<run ID> - Total".
+- After the run ID column: an order number (e.g. 201362858, ignore it), then the STORE NUMBER (e.g. 526, 49, or D102), then the same store number zero-padded (0526, ignore), then the store name (e.g. LCBO BANK & MCLEOD), then the STOP SEQUENCE (a small number like 2, 3 or 4; it may be blank), then the quantity (ignore).
+- A run whose rows are on another page may show only its "- Total" row; include it with an empty stores list.
+- The same run can appear on two pages; list it once with all its stores.
+
+Copy run IDs and store numbers exactly as printed. Keep any letter prefix on a store number (D102). Do not include order numbers, counts or totals.
+List every store row of a run in the order the rows appear on the page (top to bottom), repeating a store if it has several rows, with its stop sequence as a number, or null when blank.
+Pages may be given in any order; put dates in the order they appear on the sheet.
+
+Reply with only JSON in this shape:
+{"dates":[{"date":"Nov 2, 2026","runs":[{"id":"6100183844","stores":[{"store":"49","seq":4},{"store":"123","seq":3},{"store":"98","seq":2}]}]}]}
+Use "" for date when no date is visible.`;
+
+els.read.addEventListener("click", async () => {
+  if (!sample || !files.length) return;
+  ctl = new AbortController();
+  els.read.disabled = true; els.stop.hidden = false;
+  // Claude takes a few photos per request, so larger sets go in batches and the results are merged.
+  const batches = [];
+  for (let i = 0; i < files.length; i += maxImages) batches.push(files.slice(i, i + maxImages).map(p => p.file));
+  try {
+    const dates = [];
+    for (let b = 0; b < batches.length; b++) {
+      setStatus(batches.length > 1 ? `Reading pages, batch ${b + 1} of ${batches.length}. Each batch can take up to a minute.` : "Reading the run sheet. This can take up to a minute.", "busy");
+      const out = await sample.json(PROMPT, { images: batches[b], signal: ctl.signal, modelTier: "default" });
+      dates.push(...(out?.dates || []).filter(d => Array.isArray(d?.runs) && d.runs.length));
+    }
+    if (!dates.length) { setStatus("No runs were found. Retake the photo more clearly, or enter the lines by hand.", "err"); return; }
+    const clean = s => String(s ?? "").replace(/[:\s]+/g, " ").trim();
+    let idx = 0;
+    const read = dates.map(d => ({ date: clean(d.date), runs: d.runs.map(r => ({ id: clean(r.id),
+      entries: (Array.isArray(r.stores) ? r.stores : []).map(x => typeof x === "object" && x
+        ? { store: normStore(clean(x.store)) || "", seq: Number(x.seq) > 0 ? Number(x.seq) : NaN, idx: idx++ }
+        : { store: normStore(clean(x)) || "", seq: NaN, idx: idx++ }) })) }));
+    els.text.value = linesFrom(mergeRuns(read));
+    setStamp(Date.now()); save(); render();
+    const groups = parse(els.text.value), n = groups.reduce((t, g) => t + g.runs.length, 0);
+    const missing = groups.reduce((t, g) => t + g.runs.filter(r => !r.stores.length).length, 0);
+    setStatus(`Read ${n} run${n === 1 ? "" : "s"} from ${files.length} page${files.length === 1 ? "" : "s"}.` + (missing ? ` ${missing} had no stores on these pages and are marked Check.` : "") + " Download the PDF to print, or the Excel schedule to plan.");
+  } catch (e) {
+    if (e?.code === "cancelled") setStatus("Stopped.");
+    else setStatus(ERRORS[e?.code] || "Something went wrong reading the photos. Select Read & sort to try again.", "err");
+  } finally { els.read.disabled = !files.length || !sample; els.stop.hidden = true; }
+});
+els.stop.addEventListener("click", () => ctl?.abort());
+
+// ---- Printable PDF ----
+let downloads = null;
+const PDF_ICON = '<svg viewBox="0 0 16 16"><path d="M4 1.5h5.5L13 5v9.5H4z"/><path d="M9.5 1.5V5H13M6 9.5h5M6 12h3.5"/></svg>';
+// ---- Ask which delivery date a file is for ----
+let fileGroups = [];
+function chooseDate() {
+  const dates = lastSorted.map(g => g.date || "Not shown");
+  if (dates.length === 1) { fileGroups = lastSorted; return Promise.resolve(true); }
+  return new Promise(done => {
+    const box = $("datePick"), list = $("dateList");
+    list.innerHTML = lastSorted.map((g, i) => `<label class="dateopt"><input type="radio" name="pickdate" value="${i}"${i ? "" : " checked"}><span><b>${esc(g.date || "Date not shown")}</b><small>${g.runs.length} run${g.runs.length === 1 ? "" : "s"}</small></span></label>`).join("");
+    box.hidden = false; list.querySelector("input").focus();
+    const close = ok => {
+      box.hidden = true; $("dateOk").onclick = $("dateCancel").onclick = box.onkeydown = null;
+      if (ok) fileGroups = [lastSorted[+list.querySelector("input:checked").value]];
+      done(ok);
+    };
+    $("dateOk").onclick = () => close(true);
+    $("dateCancel").onclick = () => close(false);
+    box.onkeydown = e => { if (e.key === "Escape") close(false); if (e.key === "Enter") close(true); };
+  });
+}
+
+// Inside Claude the viewer confirms the save; on a normal web page the browser downloads it directly.
+async function saveFile(name, blob) {
+  if (downloads) return downloads.save({ filename: name, data: blob });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+}
+function storeList(r) {
+  return r.stops.length ? r.stops.map(s => s.known ? s.id : `${s.id} (not on store list)`).join(", ") : "No stores read - check sheet";
+}
+function buildPdf() {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: "pt", format: "letter" });
+  const W = doc.internal.pageSize.getWidth(), M = 36;
+  const navy = [0, 32, 80], blue = [15, 108, 189], grey = [96, 94, 92];
+  const printed = new Date().toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
+  const basis = (els.sortBy.value === "time" ? "Transit time" : "Distance from DC") + ", " + (els.dir.value === "far" ? "farthest first" : "nearest first");
+  const total = fileGroups.reduce((n, g) => n + g.runs.length, 0);
+
+  const header = () => {
+    doc.setFillColor(...navy); doc.rect(0, 0, W, 50, "F");
+    doc.setTextColor(255); doc.setFont("helvetica", "bold"); doc.setFontSize(16); doc.text("RUN SEQUENCE", M, 31);
+    doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.text("Ottawa DC  ·  3220 Hawthorne Rd", W - M, 31, { align: "right" });
+  };
+  header();
+  doc.setTextColor(...grey); doc.setFontSize(9);
+  doc.text(`Printed ${printed}     Sorted by: ${basis}     Runs: ${total}`, M, 70);
+
+  let y = 86;
+  fileGroups.forEach(g => {
+    if (y > doc.internal.pageSize.getHeight() - 120) { doc.addPage(); header(); y = 70; }
+    doc.setTextColor(...navy); doc.setFont("helvetica", "bold"); doc.setFontSize(12);
+    doc.text(`Delivery date: ${g.date || "Not shown"}`, M, y + 10);
+    doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.setTextColor(...grey);
+    doc.text(`${g.runs.length} run${g.runs.length === 1 ? "" : "s"}`, W - M, y + 10, { align: "right" });
+    const body = g.runs.map((r, i) => {
+      return [String(i + 1), r.id, storeList(r)];
+    });
+    doc.autoTable({
+      startY: y + 18, margin: { left: M, right: M, top: 64 }, theme: "grid",
+      head: [["Seq", "Run ID", "Stores"]], body,
+      styles: { font: "helvetica", fontSize: 11, cellPadding: 6, lineColor: [200, 198, 196], lineWidth: 0.5, textColor: [32, 31, 30], valign: "middle" },
+      headStyles: { fillColor: [243, 242, 241], textColor: grey, fontStyle: "bold", fontSize: 8 },
+      columnStyles: {
+        0: { cellWidth: 32, halign: "center", fontStyle: "bold", fontSize: 12, textColor: blue },
+        1: { cellWidth: 150, font: "courier", fontStyle: "bold", fontSize: 14 }
+      },
+      didParseCell: d => { if (d.section === "body" && !g.runs[d.row.index].far) d.cell.styles.fillColor = [253, 231, 233]; },
+      willDrawPage: d => { if (d.pageNumber > 1) header(); }
+    });
+    y = doc.lastAutoTable.finalY + 24;
+  });
+
+  const pages = doc.getNumberOfPages();
+  for (let i = 1; i <= pages; i++) {
+    doc.setPage(i); const H = doc.internal.pageSize.getHeight();
+    doc.setFontSize(8); doc.setTextColor(...grey); doc.setFont("helvetica", "normal");
+    doc.text("Runs ordered by their farthest store from the DC. Red rows need checking against the sheet.", M, H - 20);
+    doc.text(`Page ${i} of ${pages}`, W - M, H - 20, { align: "right" });
+  }
+  return doc.output("blob");
+}
+async function downloadPdf() {
+  if (!lastSorted.length) { setStatus("There are no runs to print yet. Add pages and select Read & sort.", "err"); return; }
+  if (!(await chooseDate())) return;
+  if (!window.jspdf?.jsPDF?.API?.autoTable) { setStatus("The PDF maker didn't load. Reload the page and try again.", "err"); return; }
+  const day = (fileGroups[0]?.date || new Date().toDateString()).replace(/[^\w]+/g, "-").replace(/^-|-$/g, "");
+  try {
+    await saveFile(`Run-sequence-${day}.pdf`, buildPdf());
+    setStatus("PDF saved. Open it from your downloads to print.");
+  } catch (e) {
+    if (e?.code === "declined") return;
+    setStatus(e?.code === "rate_limited" ? "A save is already waiting for your answer." : "The PDF couldn't be saved here.", "err");
+  }
+}
+document.querySelectorAll("[data-pdf]").forEach(b => b.addEventListener("click", downloadPdf));
+// ---- Excel schedule ----
+async function buildXlsx() {
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "Run Sorter"; wb.created = new Date();
+  const ws = wb.addWorksheet("Sorted Seq", { views: [{ state: "frozen", ySplit: 2, showGridLines: true }],
+    pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0, printTitlesRow: "1:2" } });
+  const maxStops = Math.max(1, ...fileGroups.flatMap(g => g.runs.map(r => r.stops.length)));
+  const lastCol = 4 + Math.max(maxStops, 6);
+  const colName = n => { let s = ""; while (n) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; };
+  ws.getColumn(1).width = 8; ws.getColumn(2).width = 15; ws.getColumn(3).width = 17; ws.getColumn(4).width = 11;
+  for (let c = 5; c <= lastCol; c++) ws.getColumn(c).width = 9;
+  const navy = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0B1640" } };
+  const rule = { style: "thin", color: { argb: "FFD0D0D0" } };
+
+  ws.mergeCells(1, 1, 1, lastCol);
+  const title = ws.getCell(1, 1);
+  title.value = "Sorted Seq"; title.fill = navy;
+  title.font = { bold: true, size: 18, color: { argb: "FFFFFFFF" } };
+  title.alignment = { horizontal: "center", vertical: "middle" };
+  ws.getRow(1).height = 30;
+
+  const head = ws.getRow(2);
+  ["Seq", "Date", "Run ID", "Total km", "Stores (first stop first)"].forEach((t, i) => {
+    const c = head.getCell(i + 1); c.value = t;
+    c.font = { bold: true, size: 10, color: { argb: "FF404040" } };
+    c.alignment = { horizontal: i === 0 ? "center" : "left", vertical: "middle" };
+    c.border = { bottom: { style: "thin", color: { argb: "FF0B1640" } } };
+  });
+  if (maxStops > 1) ws.mergeCells(2, 5, 2, lastCol);
+
+  let r = 3;
+  fileGroups.forEach(g => g.runs.forEach((run, i) => {
+    const row = ws.getRow(r);
+    row.getCell(1).value = i + 1;
+    row.getCell(2).value = g.date || "";
+    row.getCell(3).value = run.id;
+    // Whole run, straight line: terminal -> each stop in delivery order -> back to the terminal.
+    const pts = run.stops.filter(s => s.known).map(s => { const x = STORES[s.id]; return { lat: x[3], lng: x[4] }; });
+    if (pts.length) {
+      const path = [DEPOT, ...pts, DEPOT];
+      let total = 0; for (let k = 1; k < path.length; k++) total += km(path[k - 1], path[k]);
+      row.getCell(4).value = Math.round(total); row.getCell(4).numFmt = '0" km"';
+    }
+    run.stops.forEach((s, k) => { row.getCell(5 + k).value = /^\d+$/.test(s.id) ? Number(s.id) : s.id; });
+    row.font = { size: 13 };
+    row.getCell(1).alignment = { horizontal: "center", vertical: "middle" };
+    row.getCell(3).font = { bold: true, size: 13, name: "Consolas" };
+    for (let c = 1; c <= lastCol; c++) {
+      const cell = row.getCell(c);
+      cell.border = { bottom: rule };
+      if (c >= 4) cell.alignment = { horizontal: "right", vertical: "middle" };
+      if (!run.far) cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFDE7E9" } };
+    }
+    row.height = 22;
+    r++;
+  }));
+  ws.headerFooter = { oddFooter: "&LSorted Seq  ·  Total km = terminal to every stop and back, straight line&RPage &P of &N" };
+  ws.pageSetup.printArea = `A1:${colName(lastCol)}${Math.max(3, r - 1)}`;
+  return new Blob([await wb.xlsx.writeBuffer()], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+}
+async function downloadXlsx() {
+  if (!lastSorted.length) { setStatus("There are no runs yet. Add pages and select Read & sort.", "err"); return; }
+  if (!(await chooseDate())) return;
+  if (!window.ExcelJS) { setStatus("The Excel maker didn't load. Reload the page and try again.", "err"); return; }
+  const day = (fileGroups[0]?.date || new Date().toDateString()).replace(/[^\w]+/g, "-").replace(/^-|-$/g, "");
+  try {
+    await saveFile(`Run-schedule-${day}.xlsx`, await buildXlsx());
+    setStatus("Excel schedule saved. Open it from your downloads.");
+  } catch (e) {
+    if (e?.code === "declined") return;
+    setStatus(e?.code === "rate_limited" ? "A save is already waiting for your answer." : "The Excel file couldn't be saved here.", "err");
+  }
+}
+document.querySelectorAll("[data-xlsx]").forEach(b => b.addEventListener("click", downloadXlsx));
+// ---- Email the schedule through the viewer's Gmail connector ----
+let mcp = null;
+const DEFAULT_TO = "Ramandeep_Banger@canadacartage.com";
+const toB64 = blob => new Promise((ok, bad) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(",")[1]); r.onerror = bad; r.readAsDataURL(blob); });
+async function emailSchedule() {
+  const to = els.emailTo.value.trim();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) { els.emailBox.open = true; els.emailTo.focus(); setStatus("Enter the email address to send to under Email.", "err"); return; }
+  if (!lastSorted.length) { setStatus("There are no runs to send yet. Add pages and select Read & sort.", "err"); return; }
+  if (!(await chooseDate())) return;
+  if (!mcp) { setStatus("Email isn't available in this view. Open the page in Claude with Gmail connected.", "err"); return; }
+  if (!window.ExcelJS || !window.jspdf?.jsPDF?.API?.autoTable) { setStatus("The file makers didn't load. Reload the page and try again.", "err"); return; }
+  const day = fileGroups[0]?.date || new Date().toLocaleDateString([], { dateStyle: "medium" });
+  const slug = day.replace(/[^\w]+/g, "-").replace(/^-|-$/g, "");
+  const runs = fileGroups.reduce((n, g) => n + g.runs.length, 0);
+  const lines = fileGroups.map(g => (g.date ? g.date + "\n" : "") + g.runs.map((r, i) => `${i + 1}. ${r.id}  (${r.stops.map(s => s.id).join(", ") || "no stores read"})`).join("\n")).join("\n\n");
+  els.emailBtns.forEach(b => b.disabled = true);
+  setStatus(`Sending to ${to}…`, "busy");
+  try {
+    const [xlsx, pdf] = await Promise.all([buildXlsx().then(toB64), toB64(buildPdf())]);
+    await mcp.callTool("Gmail", "send_message", {
+      to: [to], subject: `Run schedule - ${day} (${runs} run${runs === 1 ? "" : "s"})`,
+      body: `Run schedule for ${day}, farthest run first.\n\n${lines}\n\nAttached: Excel schedule to fill in, and the PDF to print.`,
+      attachments: [
+        { filename: `Run-schedule-${slug}.xlsx`, mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", content: xlsx },
+        { filename: `Run-sequence-${slug}.pdf`, mimeType: "application/pdf", content: pdf }
+      ]
+    }, { cache: false });
+    setStatus(`Email sent to ${to} with the Excel schedule and the PDF.`);
+  } catch (e) {
+    const msg = { needs_reauth: "Gmail needs you to sign in again. Reconnect Gmail in Claude's settings, then retry.",
+      server_not_connected: "Gmail isn't connected. Connect Gmail in Claude's settings, then retry.",
+      not_granted: "Sending email wasn't allowed. Select Email again and choose Allow.",
+      consent_required: "Sending email wasn't allowed. Select Email again and choose Allow.",
+      rate_limited: "Too many emails right now. Wait a minute and try again.", cancelled: "Email cancelled." }[e?.code];
+    setStatus(msg || "The email couldn't be sent. Try again in a moment.", e?.code === "cancelled" ? "" : "err");
+  } finally { els.emailBtns.forEach(b => b.disabled = false); }
+}
+els.emailBtns = [...document.querySelectorAll("[data-email]")];
+els.emailBox = $("emailBox"); els.emailTo = $("emailTo");
+try { const saved = localStorage.getItem("runsorter-to"); els.emailTo.value = saved && !/@outlook\.com$/i.test(saved) ? saved : DEFAULT_TO; } catch { els.emailTo.value = DEFAULT_TO; }
+els.emailTo.addEventListener("change", () => { try { localStorage.setItem("runsorter-to", els.emailTo.value.trim()); } catch {} });
+els.emailBtns.forEach(b => b.addEventListener("click", emailSchedule));
+(async () => { try { mcp = await window.claude?.use?.("mcp"); } catch {} })();
+(async () => { try { downloads = await window.claude?.use?.("downloads"); } catch {} })();
+
+load(); render(); showPhotos();
+// Opened as a normal web page (no Claude): photo reading and email aren't available, the report file is.
+const STANDALONE = !window.claude;
+if (STANDALONE) {
+  [els.read, els.stop, ...els.emailBtns, els.emailBox].forEach(el => el.hidden = true);
+  els.photo.accept = ".xlsx";
+  $("addCmd").lastChild.textContent = "Open report";
+  els.dropText.innerHTML = "<b>Open the Planned Shipments report</b><br>Pick the .xlsx file. Nothing is uploaded; it's read in your browser.";
+  setStatus("Open today's Planned Shipments .xlsx to sort its runs.");
+}
+if (!STANDALONE) (async () => {
+  try {
+    const s = await window.claude?.use?.("sample");
+    const caps = s ? await s.limits().catch(() => null) : null;
+    if (s && caps?.images) { sample = s; maxImages = Math.max(1, caps.images.maxCount || 1); showPhotos(); }
+    else { els.editBox.open = true; setStatus("Reading photos isn't available in this view. Enter the lines by hand under Lines.", "err"); }
+  } catch { els.editBox.open = true; setStatus("Reading photos isn't available in this view. Enter the lines by hand under Lines.", "err"); }
+})();
+</script>
+
+</body>
+</html>
