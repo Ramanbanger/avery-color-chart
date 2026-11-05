@@ -446,7 +446,7 @@ async function importReport(file) {
     const wb = new ExcelJS.Workbook(); await wb.xlsx.load(await file.arrayBuffer());
     const ws = wb.worksheets.find(w => w.state !== "hidden") || wb.worksheets[0];
     // Find the header row and each column by its name, so moved columns still work.
-    let headRow = 0, col = { date: 1, run: 2, store: 4, seq: 7 };
+    let headRow = 0, col = { date: 1, run: 2, store: 4, alias: 5, seq: 7 };
     ws.eachRow((row, r) => {
       if (headRow) return;
       const names = {}; row.eachCell((c, n) => { names[n] = cellText(c.value).toUpperCase().trim(); });
@@ -456,7 +456,8 @@ async function importReport(file) {
       for (const [n, t] of Object.entries(names)) {
         if (t.includes("SHIPMENT")) col.run = +n;
         else if (t.includes("DELIVERY") && t.includes("DATE")) col.date = +n;
-        else if (t.includes("DESTINATION") && !t.includes("ALIAS")) col.store = +n;
+        else if (t.includes("DESTINATION") && t.includes("ALIAS")) col.alias = +n;
+        else if (t.includes("DESTINATION")) col.store = +n;
         else if (t.includes("STOP") && t.includes("SEQ")) col.seq = +n;
       }
     });
@@ -469,7 +470,9 @@ async function importReport(file) {
       const rt = cellText(row.getCell(col.run).value).trim();
       if (/total/i.test(rt)) { curRun = ""; continue; }
       if (rt) curRun = rt;
-      const store = normStore(cellText(row.getCell(col.store).value).trim() || "");
+      // DESTINATION ALIAS# holds the real store number (Beer Stores show a code like 1024990 in DESTINATION#).
+      const alias = cellText(row.getCell(col.alias).value).trim();
+      const store = normStore(alias || cellText(row.getCell(col.store).value).trim() || "");
       if (!curDate || !curRun || !store) continue;
       if (!g || g.date !== curDate) { g = dates.find(x => x.date === curDate) || (dates.push({ date: curDate, runs: [] }), dates.at(-1)); }
       let run = g.runs.find(x => x.id === curRun); if (!run) g.runs.push(run = { id: curRun, entries: [] });
@@ -489,11 +492,11 @@ const PROMPT = `These photos are pages of a delivery dispatch report (a printed 
 How the table works:
 - The far-left column sometimes shows a delivery date (e.g. "Nov 15, 2026"). It applies to every run below it until the next date. A row like "Nov 2, 2026 - Total" ends that date.
 - The next column is the RUN ID: a long number such as 6100183841. It is written once, on the first row of the run. The rows under it belong to the same run until a row reading "<run ID> - Total".
-- After the run ID column: an order number (e.g. 201362858, ignore it), then the STORE NUMBER (e.g. 526, 49, or D102), then the same store number zero-padded (0526, ignore), then the store name (e.g. LCBO BANK & MCLEOD), then the STOP SEQUENCE (a small number like 2, 3 or 4; it may be blank), then the quantity (ignore).
+- After the run ID column: an order number (e.g. 201362858, ignore it), then DESTINATION# (e.g. 526, or a long code like 1024990 for Beer Stores), then DESTINATION ALIAS#, the real store number with a leading zero (e.g. 0526 or 03503), then the store name (e.g. LCBO BANK & MCLEOD), then the STOP SEQUENCE (a small number like 2, 3 or 4; it may be blank), then the quantity (ignore).
 - A run whose rows are on another page may show only its "- Total" row; include it with an empty stores list.
 - The same run can appear on two pages; list it once with all its stores.
 
-Copy run IDs and store numbers exactly as printed. Keep any letter prefix on a store number (D102). Do not include order numbers, counts or totals.
+Copy run IDs exactly as printed. For the store, use DESTINATION ALIAS# without its leading zeros (0526 becomes 526, 03503 becomes 3503); only when the alias is blank, use DESTINATION# instead, keeping any letter prefix (D102). Do not include order numbers, counts or totals.
 List every store row of a run in the order the rows appear on the page (top to bottom), repeating a store if it has several rows, with its stop sequence as a number, or null when blank.
 Pages may be given in any order; put dates in the order they appear on the sheet.
 
